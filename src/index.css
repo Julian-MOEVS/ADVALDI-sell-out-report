@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #24242c #0d0d10;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0d10;
+}
+::-webkit-scrollbar-thumb {
+  background: #24242c;
+  border-radius: 3px;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  margin: 0;
+}
+
+input, select, button {
+  font-family: inherit;
+}

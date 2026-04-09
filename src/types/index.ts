@@ -1,0 +1,46 @@
+export interface DataRow {
+  w: string;
+  rg: 'NL' | 'BE';
+  mfr: string;
+  pg: string;
+  an: string;
+  ean: string;
+  ch: string;
+  st: string;
+  sl: string;
+  p: number;
+  s: number;
+  k: number;
+}
+
+export interface PlatformConfig {
+  shopify?: { url: string; apiKey: string; accessToken: string };
+  woocommerce?: { url: string; consumerKey: string; consumerSecret: string };
+  bol?: { clientId: string; clientSecret: string };
+}
+
+export interface AppState {
+  userData: DataRow[];
+  aliases: Record<string, string>;
+  platformConfig: PlatformConfig;
+  selectedWeek: 'all' | string;
+  selectedMarket: 'all' | 'NL' | 'BE';
+  activePage: string;
+  detailId: string;
+  sidebarOpen: boolean;
+}
+
+export interface AppActions {
+  addUserData: (rows: DataRow[]) => void;
+  removeUserCombo: (week: string, market: 'NL' | 'BE') => void;
+  setAlias: (orig: string, alias: string) => void;
+  clearAlias: (orig: string) => void;
+  clearAllAliases: () => void;
+  setPlatformConfig: (config: Partial<PlatformConfig>) => void;
+  setSelectedWeek: (week: 'all' | string) => void;
+  setSelectedMarket: (market: 'all' | 'NL' | 'BE') => void;
+  setActivePage: (page: string, detailId?: string) => void;
+  setSidebarOpen: (open: boolean) => void;
+  allData: () => DataRow[];
+  displayName: (orig: string) => string;
+}
