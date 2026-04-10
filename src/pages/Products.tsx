@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
+import { catalogEan } from '../lib/catalog';
 import Sparkline from '../components/ui/Sparkline';
 import StatusBadge from '../components/ui/StatusBadge';
 
@@ -22,7 +23,7 @@ export default function Products() {
         const p = aRows.reduce((a, r) => a + r.p, 0);
         const mfr = aRows[0].mfr;
         const pg = aRows[0].pg;
-        const ean = aRows[0].ean;
+        const ean = aRows[0].ean || catalogEan(an) || '';
 
         // Sparkline per week
         const byWeek = groupBy(aRows, (r) => r.w);
@@ -63,6 +64,7 @@ export default function Products() {
             <thead>
               <tr className="text-left text-gray-500 text-xs uppercase bg-bg3">
                 <th className="p-3">Artikel</th>
+                <th className="p-3">EAN</th>
                 <th className="p-3">Merk</th>
                 <th className="p-3">Productgroep</th>
                 <th className="p-3 text-right">Verkopen</th>
@@ -84,6 +86,7 @@ export default function Products() {
                       {displayName(p.an)}
                     </button>
                   </td>
+                  <td className="p-3 text-gray-500 font-mono text-xs">{p.ean}</td>
                   <td className="p-3 text-gray-400">{p.mfr}</td>
                   <td className="p-3 text-gray-400">{p.pg}</td>
                   <td className="p-3 text-right font-mono">{p.s}</td>
@@ -95,7 +98,7 @@ export default function Products() {
               ))}
               {filtered2.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">
+                  <td colSpan={9} className="p-8 text-center text-gray-500">
                     Geen producten gevonden
                   </td>
                 </tr>

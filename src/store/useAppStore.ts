@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
+import { catalogDisplayName } from '../lib/catalog';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -45,7 +46,7 @@ export const useAppStore = create<AppState & AppActions>()(
 
       allData: () => [...EMBEDDED_DATA, ...get().userData],
 
-      displayName: (orig: string) => get().aliases[orig] || orig,
+      displayName: (orig: string) => get().aliases[orig] || catalogDisplayName(orig) || orig,
     }),
     {
       name: 'moevs-store',
