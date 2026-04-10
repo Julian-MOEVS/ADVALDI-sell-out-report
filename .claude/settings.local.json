@@ -4,7 +4,26 @@
       "Bash(npm create:*)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(winget install:*)",
+      "Read(//c/Program Files/GitHub CLI//**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Read(//c/Users/hetis/AppData/**)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth status)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo create ADVALDI-sell-out-report --private --source=. --push --description \"MOEVS Agency sell-out dashboard — React + TypeScript\")",
+      "Bash(npm list:*)",
+      "Bash(npx netlify-cli:*)",
+      "Bash(zip -r ~/Desktop/moevs-dashboard.zip dist/*)",
+      "Bash(powershell -Command 'Compress-Archive -Path '\\\\''dist/*'\\\\'' -DestinationPath '\\\\''__TRACKED_VAR__/Desktop/moevs-dashboard.zip'\\\\'' -Force')",
+      "Bash(powershell -Command \"Compress-Archive -Path 'dist\\\\*' -DestinationPath 'C:\\\\Users\\\\hetis\\\\Desktop\\\\moevs-dashboard.zip' -Force\")",
+      "Read(//c/Users/hetis/**)",
+      "Read(//c/Users/hetis/OneDrive/Bureaublad/**)",
+      "Read(//c/Users/hetis/OneDrive/**)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo edit JulianManders/ADVALDI-sell-out-report --visibility public)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo edit JulianManders/ADVALDI-sell-out-report --visibility public --accept-visibility-change-consequences)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth login --hostname github.com --web)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo create ADVALDI-sell-out-report --public --source=. --remote=moevs --push --description \"MOEVS Agency sell-out dashboard — React + TypeScript\")",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth refresh --hostname github.com --scopes workflow)"
     ]
   }
 }

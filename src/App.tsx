@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useAppStore } from './store/useAppStore';
 import Sidebar from './components/layout/Sidebar';
 import Topbar from './components/layout/Topbar';
+import LoginScreen from './components/layout/LoginScreen';
 import Dashboard from './pages/Dashboard';
 import WeekView from './pages/WeekView';
 import Products from './pages/Products';
@@ -31,6 +33,12 @@ const pages: Record<string, { title: string; component: React.FC }> = {
 
 export default function App() {
   const { activePage } = useAppStore();
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem('moevs-auth') === '1');
+
+  if (!authed) {
+    return <LoginScreen onLogin={() => setAuthed(true)} />;
+  }
+
   const page = pages[activePage] || pages.dashboard;
   const PageComponent = page.component;
 
