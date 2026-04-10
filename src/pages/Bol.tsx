@@ -25,7 +25,7 @@ export default function Bol() {
 
       <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 flex gap-3">
         <AlertTriangle size={18} className="text-warning shrink-0 mt-0.5" />
-        <p className="text-sm text-gray-300">
+        <p className="text-sm text-dark/60">
           De Bol.com API ondersteunt geen directe browser-verzoeken vanwege CORS-beperkingen.
           Gebruik de Excel-import functie om Bol.com data te verwerken.
         </p>
@@ -33,20 +33,20 @@ export default function Bol() {
 
       <div className="space-y-3">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Client ID</label>
+          <label className="block text-xs text-dark/50 mb-1">Client ID</label>
           <input value={clientId} onChange={(e) => setClientId(e.target.value)}
-            className="w-full bg-bg2 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            className="w-full bg-bg2 border border-bg4 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent" />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Client Secret</label>
+          <label className="block text-xs text-dark/50 mb-1">Client Secret</label>
           <input value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} type="password"
-            className="w-full bg-bg2 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            className="w-full bg-bg2 border border-bg4 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent" />
         </div>
       </div>
 
       <div className="flex gap-3">
-        <button onClick={handleSave} className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/80 transition text-sm">Opslaan</button>
-        <button onClick={() => setActivePage('import')} className="px-4 py-2 bg-bg3 text-gray-300 rounded-lg hover:bg-bg4 transition text-sm">Naar Excel import</button>
+        <button onClick={handleSave} className="px-4 py-2 bg-gradient-to-r from-accent-light to-accent text-white rounded-lg hover:opacity-90 transition text-sm">Opslaan</button>
+        <button onClick={() => setActivePage('import')} className="px-4 py-2 bg-bg text-dark/60 rounded-lg hover:bg-bg4 transition text-sm">Naar Excel import</button>
       </div>
 
       {saved && <p className="text-sm text-success">Instellingen opgeslagen</p>}

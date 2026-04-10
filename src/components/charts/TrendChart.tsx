@@ -28,34 +28,34 @@ export default function TrendChart({ data, market }: Props) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#24242c" />
-        <XAxis dataKey="week" stroke="#666" fontSize={12} />
-        <YAxis stroke="#666" fontSize={12} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+        <XAxis dataKey="week" stroke="#94a3b8" fontSize={12} />
+        <YAxis stroke="#94a3b8" fontSize={12} />
         <Tooltip
-          contentStyle={{ background: '#141418', border: '1px solid #24242c', borderRadius: 8 }}
-          labelStyle={{ color: '#eeeef2' }}
+          contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+          labelStyle={{ color: '#1d1d1d', fontWeight: 600 }}
         />
         {market === 'all' ? (
           <>
-            <Area type="monotone" dataKey="NL" fill="#3b82f6" fillOpacity={0.1} stroke="none" />
-            <Area type="monotone" dataKey="BE" fill="#f59e0b" fillOpacity={0.1} stroke="none" />
-            <Line type="monotone" dataKey="NL" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="BE" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+            <Area type="monotone" dataKey="NL" fill="#2563eb" fillOpacity={0.08} stroke="none" />
+            <Area type="monotone" dataKey="BE" fill="#d97706" fillOpacity={0.08} stroke="none" />
+            <Line type="monotone" dataKey="NL" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="BE" stroke="#d97706" strokeWidth={2.5} dot={{ r: 3 }} />
           </>
         ) : (
           <>
             <Area
               type="monotone"
               dataKey="Totaal"
-              fill={market === 'NL' ? '#3b82f6' : '#f59e0b'}
-              fillOpacity={0.1}
+              fill={market === 'NL' ? '#2563eb' : '#d97706'}
+              fillOpacity={0.08}
               stroke="none"
             />
             <Line
               type="monotone"
               dataKey="Totaal"
-              stroke={market === 'NL' ? '#3b82f6' : '#f59e0b'}
-              strokeWidth={2}
+              stroke={market === 'NL' ? '#2563eb' : '#d97706'}
+              strokeWidth={2.5}
               dot={{ r: 3 }}
             />
           </>

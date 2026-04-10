@@ -12,7 +12,7 @@ export default function Sparkline({ values }: Props) {
           className="w-1.5 rounded-sm bg-accent"
           style={{
             height: `${Math.max((v / max) * 100, 4)}%`,
-            opacity: v === 0 ? 0.2 : 1,
+            opacity: v === 0 ? 0.15 : 0.7,
           }}
         />
       ))}

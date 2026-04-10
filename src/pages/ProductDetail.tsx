@@ -71,7 +71,7 @@ export default function ProductDetail() {
 
   if (!first) {
     return (
-      <div className="text-center text-gray-500 py-12">
+      <div className="text-center text-dark/40 py-12">
         <p>Product niet gevonden.</p>
         <button onClick={() => setActivePage('products')} className="mt-3 text-accent hover:underline">
           Terug naar producten
@@ -86,7 +86,7 @@ export default function ProductDetail() {
       <div className="flex items-start gap-4">
         <button
           onClick={() => setActivePage('products')}
-          className="mt-1 p-1.5 rounded-lg bg-bg3 hover:bg-bg4 transition text-gray-400 hover:text-white"
+          className="mt-1 p-1.5 rounded-lg bg-bg hover:bg-bg4 transition text-dark/50 hover:text-dark"
         >
           <ArrowLeft size={18} />
         </button>
@@ -94,14 +94,14 @@ export default function ProductDetail() {
           <h2 className="text-lg font-semibold truncate" title={articleName}>
             {displayName(articleName)}
           </h2>
-          <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-gray-400">
-            <span className="px-2 py-0.5 bg-bg3 rounded text-xs">{first.mfr}</span>
-            <span className="px-2 py-0.5 bg-bg3 rounded text-xs">{first.pg}</span>
-            <span className="text-xs text-gray-500">EAN: {first.ean}</span>
+          <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-dark/50">
+            <span className="px-2 py-0.5 bg-bg rounded text-xs">{first.mfr}</span>
+            <span className="px-2 py-0.5 bg-bg rounded text-xs">{first.pg}</span>
+            <span className="text-xs text-dark/40">EAN: {first.ean}</span>
             <StatusBadge sales={totalSales} stock={totalStock} />
           </div>
           {displayName(articleName) !== articleName && (
-            <p className="text-xs text-gray-500 mt-1 truncate" title={articleName}>
+            <p className="text-xs text-dark/40 mt-1 truncate" title={articleName}>
               Origineel: {articleName}
             </p>
           )}
@@ -118,41 +118,41 @@ export default function ProductDetail() {
 
       {/* Trend charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Verkopen per week</h3>
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <h3 className="text-sm font-medium text-dark/60 mb-3">Verkopen per week</h3>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={weekTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#24242c" />
-              <XAxis dataKey="week" stroke="#666" fontSize={12} />
-              <YAxis stroke="#666" fontSize={12} />
-              <Tooltip contentStyle={{ background: '#141418', border: '1px solid #24242c', borderRadius: 8 }} />
-              <Line type="monotone" dataKey="verkopen" stroke="#7c6af7" strokeWidth={2} dot={{ r: 3 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="week" stroke="#999" fontSize={12} />
+              <YAxis stroke="#999" fontSize={12} />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }} />
+              <Line type="monotone" dataKey="verkopen" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Voorraad & inkopen per week</h3>
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <h3 className="text-sm font-medium text-dark/60 mb-3">Voorraad & inkopen per week</h3>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={weekTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#24242c" />
-              <XAxis dataKey="week" stroke="#666" fontSize={12} />
-              <YAxis stroke="#666" fontSize={12} />
-              <Tooltip contentStyle={{ background: '#141418', border: '1px solid #24242c', borderRadius: 8 }} />
-              <Bar dataKey="voorraad" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="inkopen" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="week" stroke="#999" fontSize={12} />
+              <YAxis stroke="#999" fontSize={12} />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }} />
+              <Bar dataKey="voorraad" fill="#2563eb" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="inkopen" fill="#d97706" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Per store */}
-      <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Per winkel</h3>
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+        <h3 className="text-sm font-medium text-dark/60 mb-3">Per winkel</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 text-xs uppercase">
+              <tr className="text-left text-dark/40 text-xs uppercase">
                 <th className="pb-2 pr-3">#</th>
                 <th className="pb-2 pr-3">Winkel</th>
                 <th className="pb-2 pr-3">Markt</th>
@@ -163,8 +163,8 @@ export default function ProductDetail() {
             </thead>
             <tbody>
               {storeBreakdown.map((s, i) => (
-                <tr key={s.store} className="border-t border-white/5 hover:bg-bg3/50 transition">
-                  <td className="py-1.5 pr-3 text-gray-500">{i + 1}</td>
+                <tr key={s.store} className="border-t border-bg4 hover:bg-bg/50 transition">
+                  <td className="py-1.5 pr-3 text-dark/40">{i + 1}</td>
                   <td className="py-1.5 pr-3">
                     <button
                       onClick={() => setActivePage('storedetail', s.store)}
@@ -186,12 +186,12 @@ export default function ProductDetail() {
       </div>
 
       {/* Per week */}
-      <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Per week</h3>
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+        <h3 className="text-sm font-medium text-dark/60 mb-3">Per week</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 text-xs uppercase">
+              <tr className="text-left text-dark/40 text-xs uppercase">
                 <th className="pb-2 pr-3">Week</th>
                 <th className="pb-2 pr-3 text-right">Verkopen</th>
                 <th className="pb-2 pr-3 text-right">Voorraad</th>
@@ -201,7 +201,7 @@ export default function ProductDetail() {
             </thead>
             <tbody>
               {weekBreakdown.map((w) => (
-                <tr key={w.w} className="border-t border-white/5">
+                <tr key={w.w} className="border-t border-bg4">
                   <td className="py-1.5 pr-3">W{w.w.slice(-2)} ({w.w})</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{w.sales}</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{w.stock}</td>

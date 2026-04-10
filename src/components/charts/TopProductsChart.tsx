@@ -22,13 +22,13 @@ export default function TopProductsChart({ data, displayName }: Props) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
-        <XAxis type="number" stroke="#666" fontSize={12} />
-        <YAxis dataKey="name" type="category" stroke="#666" fontSize={10} width={160} />
+        <XAxis type="number" stroke="#94a3b8" fontSize={12} />
+        <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={10} width={160} />
         <Tooltip
-          contentStyle={{ background: '#141418', border: '1px solid #24242c', borderRadius: 8 }}
-          labelStyle={{ color: '#eeeef2' }}
+          contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+          labelStyle={{ color: '#1d1d1d', fontWeight: 600 }}
         />
-        <Bar dataKey="verkopen" fill="#34d399" radius={[0, 4, 4, 0]} />
+        <Bar dataKey="verkopen" fill="#16a34a" radius={[0, 8, 8, 0]} fillOpacity={0.8} />
       </BarChart>
     </ResponsiveContainer>
   );

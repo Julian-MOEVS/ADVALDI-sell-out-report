@@ -21,14 +21,14 @@ export default function BrandChart({ data }: Props) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#24242c" />
-        <XAxis dataKey="brand" stroke="#666" fontSize={11} />
-        <YAxis stroke="#666" fontSize={12} />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+        <XAxis dataKey="brand" stroke="#94a3b8" fontSize={11} />
+        <YAxis stroke="#94a3b8" fontSize={12} />
         <Tooltip
-          contentStyle={{ background: '#141418', border: '1px solid #24242c', borderRadius: 8 }}
-          labelStyle={{ color: '#eeeef2' }}
+          contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+          labelStyle={{ color: '#1d1d1d', fontWeight: 600 }}
         />
-        <Bar dataKey="verkopen" fill="#7c6af7" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="verkopen" fill="#2563eb" radius={[8, 8, 0, 0]} fillOpacity={0.8} />
       </BarChart>
     </ResponsiveContainer>
   );

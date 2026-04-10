@@ -55,14 +55,14 @@ export default function Products() {
         placeholder="Zoek op artikel, merk of EAN..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="w-full bg-bg2 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent"
+        className="w-full bg-bg2 border border-bg4 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent"
       />
 
-      <div className="bg-bg2 border border-white/5 rounded-xl overflow-hidden">
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 text-xs uppercase bg-bg3">
+              <tr className="text-left text-dark/40 text-xs uppercase bg-bg">
                 <th className="p-3">Artikel</th>
                 <th className="p-3">EAN</th>
                 <th className="p-3">Merk</th>
@@ -76,7 +76,7 @@ export default function Products() {
             </thead>
             <tbody>
               {filtered2.map((p) => (
-                <tr key={p.an} className="border-t border-white/5 hover:bg-bg3/50 transition">
+                <tr key={p.an} className="border-t border-bg4 hover:bg-bg/50 transition">
                   <td className="p-3 max-w-[220px]">
                     <button
                       onClick={() => setActivePage('productdetail', p.an)}
@@ -86,9 +86,9 @@ export default function Products() {
                       {displayName(p.an)}
                     </button>
                   </td>
-                  <td className="p-3 text-gray-500 font-mono text-xs">{p.ean}</td>
-                  <td className="p-3 text-gray-400">{p.mfr}</td>
-                  <td className="p-3 text-gray-400">{p.pg}</td>
+                  <td className="p-3 text-dark/40 font-mono text-xs">{p.ean}</td>
+                  <td className="p-3 text-dark/50">{p.mfr}</td>
+                  <td className="p-3 text-dark/50">{p.pg}</td>
                   <td className="p-3 text-right font-mono">{p.s}</td>
                   <td className="p-3 text-right font-mono">{p.k}</td>
                   <td className="p-3 text-right font-mono">{p.p}</td>
@@ -98,7 +98,7 @@ export default function Products() {
               ))}
               {filtered2.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-gray-500">
+                  <td colSpan={9} className="p-8 text-center text-dark/40">
                     Geen producten gevonden
                   </td>
                 </tr>

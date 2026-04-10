@@ -68,14 +68,14 @@ export default function Dashboard() {
   if (data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-        <Package className="w-16 h-16 text-gray-600" />
+        <Package className="w-16 h-16 text-dark/30" />
         <h2 className="text-xl font-semibold">Geen data beschikbaar</h2>
-        <p className="text-gray-400 text-center max-w-md">
+        <p className="text-dark/50 text-center max-w-md">
           Importeer Excel-bestanden van Media Markt om je dashboard te vullen met verkoop-, voorraad- en inkoopgegevens.
         </p>
         <button
           onClick={() => setActivePage('import')}
-          className="mt-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/80 transition"
+          className="mt-2 px-4 py-2 bg-gradient-to-r from-accent-light to-accent text-white rounded-lg hover:opacity-90 transition"
         >
           Excel importeren
         </button>
@@ -103,29 +103,29 @@ export default function Dashboard() {
         <StatCard label="Weken" value={weekCount} icon={<Calendar size={16} />} />
       </div>
 
-      <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Weektrend verkopen</h3>
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+        <h3 className="text-sm font-medium text-dark/60 mb-3">Weektrend verkopen</h3>
         <TrendChart data={rows} market={selectedMarket} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Verkopen per merk</h3>
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <h3 className="text-sm font-medium text-dark/60 mb-3">Verkopen per merk</h3>
           <BrandChart data={rows} />
         </div>
-        <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Top producten</h3>
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <h3 className="text-sm font-medium text-dark/60 mb-3">Top producten</h3>
           <TopProductsChart data={rows} displayName={displayName} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Top winkels</h3>
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <h3 className="text-sm font-medium text-dark/60 mb-3">Top winkels</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-500 text-xs uppercase">
+                <tr className="text-left text-dark/40 text-xs uppercase">
                   <th className="pb-2 pr-2">#</th>
                   <th className="pb-2 pr-2">Winkel</th>
                   <th className="pb-2 pr-2">Markt</th>
@@ -135,8 +135,8 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {storeGroups.map((s, i) => (
-                  <tr key={s.store} className="border-t border-white/5">
-                    <td className="py-1.5 pr-2 text-gray-500">{i + 1}</td>
+                  <tr key={s.store} className="border-t border-bg4">
+                    <td className="py-1.5 pr-2 text-dark/40">{i + 1}</td>
                     <td className="py-1.5 pr-2 max-w-[200px]">
                       <button onClick={() => setActivePage('storedetail', s.store)} className="text-accent hover:underline truncate block text-left max-w-full" title={s.store}>{s.store}</button>
                     </td>
@@ -150,12 +150,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Lage voorraad</h3>
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <h3 className="text-sm font-medium text-dark/60 mb-3">Lage voorraad</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-500 text-xs uppercase">
+                <tr className="text-left text-dark/40 text-xs uppercase">
                   <th className="pb-2 pr-2">Artikel</th>
                   <th className="pb-2 pr-2">Merk</th>
                   <th className="pb-2 text-right">Voorraad</th>
@@ -163,18 +163,18 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {lowStock.map((a) => (
-                  <tr key={a.an} className="border-t border-white/5">
+                  <tr key={a.an} className="border-t border-bg4">
                     <td className="py-1.5 pr-2 max-w-[200px]">
                       <button onClick={() => setActivePage('productdetail', a.an)} className="text-accent hover:underline truncate block text-left max-w-full" title={a.an}>{displayName(a.an)}</button>
                     </td>
-                    <td className="py-1.5 pr-2 text-gray-400">{a.mfr}</td>
+                    <td className="py-1.5 pr-2 text-dark/50">{a.mfr}</td>
                     <td className={`py-1.5 text-right font-mono font-bold ${a.stock === 0 ? 'text-danger' : 'text-warning'}`}>
                       {a.stock}
                     </td>
                   </tr>
                 ))}
                 {lowStock.length === 0 && (
-                  <tr><td colSpan={3} className="py-4 text-center text-gray-500">Geen producten met lage voorraad</td></tr>
+                  <tr><td colSpan={3} className="py-4 text-center text-dark/40">Geen producten met lage voorraad</td></tr>
                 )}
               </tbody>
             </table>

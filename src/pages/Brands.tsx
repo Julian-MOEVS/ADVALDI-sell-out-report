@@ -56,16 +56,16 @@ export default function Brands() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Verkopen per merk per week (gestapeld)</h3>
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+        <h3 className="text-sm font-medium text-dark/60 mb-3">Verkopen per merk per week (gestapeld)</h3>
         <ResponsiveContainer width="100%" height={350}>
           <BarChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#24242c" />
-            <XAxis dataKey="week" stroke="#666" fontSize={12} />
-            <YAxis stroke="#666" fontSize={12} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="week" stroke="#999" fontSize={12} />
+            <YAxis stroke="#999" fontSize={12} />
             <Tooltip
-              contentStyle={{ background: '#141418', border: '1px solid #24242c', borderRadius: 8 }}
-              labelStyle={{ color: '#eeeef2' }}
+              contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+              labelStyle={{ color: '#1d1d1d' }}
             />
             <Legend />
             {brands.map((brand, i) => (
@@ -94,11 +94,11 @@ export default function Brands() {
         </ResponsiveContainer>
       </div>
 
-      <div className="bg-bg2 border border-white/5 rounded-xl overflow-hidden">
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 text-xs uppercase bg-bg3">
+              <tr className="text-left text-dark/40 text-xs uppercase bg-bg">
                 <th className="p-3">#</th>
                 <th className="p-3">Merk</th>
                 <th className="p-3 text-right">Verkopen</th>
@@ -108,8 +108,8 @@ export default function Brands() {
             </thead>
             <tbody>
               {brandTable.map((b, i) => (
-                <tr key={b.brand} className="border-t border-white/5 hover:bg-bg3/50 transition">
-                  <td className="p-3 text-gray-500">{i + 1}</td>
+                <tr key={b.brand} className="border-t border-bg4 hover:bg-bg/50 transition">
+                  <td className="p-3 text-dark/40">{i + 1}</td>
                   <td className="p-3 font-medium">{b.brand}</td>
                   <td className="p-3 text-right font-mono">{b.sales}</td>
                   <td className="p-3 text-right font-mono">{b.stock}</td>

@@ -86,7 +86,7 @@ export default function StoreDetail() {
 
   if (!first) {
     return (
-      <div className="text-center text-gray-500 py-12">
+      <div className="text-center text-dark/40 py-12">
         <p>Winkel niet gevonden.</p>
         <button onClick={() => setActivePage('stores')} className="mt-3 text-accent hover:underline">
           Terug naar winkels
@@ -101,7 +101,7 @@ export default function StoreDetail() {
       <div className="flex items-start gap-4">
         <button
           onClick={() => setActivePage('stores')}
-          className="mt-1 p-1.5 rounded-lg bg-bg3 hover:bg-bg4 transition text-gray-400 hover:text-white"
+          className="mt-1 p-1.5 rounded-lg bg-bg hover:bg-bg4 transition text-dark/50 hover:text-dark"
         >
           <ArrowLeft size={18} />
         </button>
@@ -109,7 +109,7 @@ export default function StoreDetail() {
           <h2 className="text-lg font-semibold truncate" title={storeName}>{storeName}</h2>
           <div className="flex items-center gap-2 mt-1">
             <MarketPill market={first.rg} />
-            {first.ch && <span className="text-xs text-gray-500">{first.ch}</span>}
+            {first.ch && <span className="text-xs text-dark/40">{first.ch}</span>}
           </div>
         </div>
       </div>
@@ -124,40 +124,40 @@ export default function StoreDetail() {
 
       {/* Trend charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Verkopen per week</h3>
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <h3 className="text-sm font-medium text-dark/60 mb-3">Verkopen per week</h3>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={weekTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#24242c" />
-              <XAxis dataKey="week" stroke="#666" fontSize={12} />
-              <YAxis stroke="#666" fontSize={12} />
-              <Tooltip contentStyle={{ background: '#141418', border: '1px solid #24242c', borderRadius: 8 }} />
-              <Line type="monotone" dataKey="verkopen" stroke="#7c6af7" strokeWidth={2} dot={{ r: 3 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="week" stroke="#999" fontSize={12} />
+              <YAxis stroke="#999" fontSize={12} />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }} />
+              <Line type="monotone" dataKey="verkopen" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Verkopen per merk</h3>
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <h3 className="text-sm font-medium text-dark/60 mb-3">Verkopen per merk</h3>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={brandBreakdown}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#24242c" />
-              <XAxis dataKey="brand" stroke="#666" fontSize={11} />
-              <YAxis stroke="#666" fontSize={12} />
-              <Tooltip contentStyle={{ background: '#141418', border: '1px solid #24242c', borderRadius: 8 }} />
-              <Bar dataKey="sales" name="Verkopen" fill="#7c6af7" radius={[4, 4, 0, 0]} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="brand" stroke="#999" fontSize={11} />
+              <YAxis stroke="#999" fontSize={12} />
+              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }} />
+              <Bar dataKey="sales" name="Verkopen" fill="#2563eb" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Products table */}
-      <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Producten in deze winkel</h3>
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+        <h3 className="text-sm font-medium text-dark/60 mb-3">Producten in deze winkel</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 text-xs uppercase">
+              <tr className="text-left text-dark/40 text-xs uppercase">
                 <th className="pb-2 pr-3">#</th>
                 <th className="pb-2 pr-3">Artikel</th>
                 <th className="pb-2 pr-3">Merk</th>
@@ -170,8 +170,8 @@ export default function StoreDetail() {
             </thead>
             <tbody>
               {productBreakdown.map((p, i) => (
-                <tr key={p.an} className="border-t border-white/5 hover:bg-bg3/50 transition">
-                  <td className="py-1.5 pr-3 text-gray-500">{i + 1}</td>
+                <tr key={p.an} className="border-t border-bg4 hover:bg-bg/50 transition">
+                  <td className="py-1.5 pr-3 text-dark/40">{i + 1}</td>
                   <td className="py-1.5 pr-3">
                     <button
                       onClick={() => setActivePage('productdetail', p.an)}
@@ -181,8 +181,8 @@ export default function StoreDetail() {
                       {displayName(p.an)}
                     </button>
                   </td>
-                  <td className="py-1.5 pr-3 text-gray-400">{p.mfr}</td>
-                  <td className="py-1.5 pr-3 text-gray-400">{p.pg}</td>
+                  <td className="py-1.5 pr-3 text-dark/50">{p.mfr}</td>
+                  <td className="py-1.5 pr-3 text-dark/50">{p.pg}</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{p.s}</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{p.k}</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{p.p}</td>
@@ -195,12 +195,12 @@ export default function StoreDetail() {
       </div>
 
       {/* Per week table */}
-      <div className="bg-bg2 border border-white/5 rounded-xl p-4">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Per week</h3>
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+        <h3 className="text-sm font-medium text-dark/60 mb-3">Per week</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 text-xs uppercase">
+              <tr className="text-left text-dark/40 text-xs uppercase">
                 <th className="pb-2 pr-3">Week</th>
                 <th className="pb-2 pr-3 text-right">Verkopen</th>
                 <th className="pb-2 pr-3 text-right">Voorraad</th>
@@ -210,7 +210,7 @@ export default function StoreDetail() {
             </thead>
             <tbody>
               {weekBreakdown.map((w) => (
-                <tr key={w.w} className="border-t border-white/5">
+                <tr key={w.w} className="border-t border-bg4">
                   <td className="py-1.5 pr-3">W{w.w.slice(-2)} ({w.w})</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{w.sales}</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{w.stock}</td>

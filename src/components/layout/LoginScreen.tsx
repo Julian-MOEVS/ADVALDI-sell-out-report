@@ -23,19 +23,19 @@ export default function LoginScreen({ onLogin }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
-      <div className="bg-bg2 border border-white/5 rounded-2xl p-8 w-full max-w-sm">
-        <div className="flex flex-col items-center gap-4 mb-6">
-          <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center">
-            <Lock size={22} className="text-accent" />
+    <div className="min-h-screen bg-gradient-to-br from-accent-light via-accent to-accent-dark flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl p-10 w-full max-w-sm shadow-2xl">
+        <div className="flex flex-col items-center gap-4 mb-8">
+          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-accent-light to-accent flex items-center justify-center shadow-lg">
+            <Lock size={24} className="text-white" />
           </div>
           <div className="text-center">
-            <h1 className="text-lg font-bold text-accent tracking-wide">MOEVS</h1>
-            <p className="text-sm text-gray-400 mt-1">Sell-out Dashboard</p>
+            <h1 className="text-xl font-semibold text-dark tracking-wide">ADVALDI</h1>
+            <p className="text-sm text-dark/40 mt-1 font-light">Sell-out Dashboard</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <input
               type="password"
@@ -43,15 +43,15 @@ export default function LoginScreen({ onLogin }: Props) {
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(false); }}
               autoFocus
-              className="w-full bg-bg3 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent"
+              className="w-full bg-bg border border-bg4 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:border-accent font-light"
             />
             {error && (
-              <p className="text-danger text-xs mt-2">Onjuist wachtwoord</p>
+              <p className="text-danger text-xs mt-2 font-light">Onjuist wachtwoord</p>
             )}
           </div>
           <button
             type="submit"
-            className="w-full py-2.5 bg-accent text-white rounded-lg hover:bg-accent/80 transition text-sm font-medium"
+            className="w-full py-3 bg-gradient-to-r from-accent-light to-accent text-white rounded-2xl hover:opacity-90 transition text-sm font-semibold shadow-lg"
           >
             Inloggen
           </button>

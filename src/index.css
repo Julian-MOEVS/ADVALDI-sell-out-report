@@ -4,7 +4,7 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #24242c #0d0d10;
+  scrollbar-color: #d1d5db #f5f7fa;
 }
 
 ::-webkit-scrollbar {
@@ -12,16 +12,21 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0d0d10;
+  background: #f5f7fa;
 }
 ::-webkit-scrollbar-thumb {
-  background: #24242c;
+  background: #cbd5e1;
   border-radius: 3px;
 }
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 300;
   margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6, strong, th {
+  font-weight: 600;
 }
 
 input, select, button {

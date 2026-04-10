@@ -45,7 +45,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <div className="flex-1 md:ml-[216px] flex flex-col">
+      <div className="flex-1 md:ml-[240px] flex flex-col">
         <Topbar />
         <main className="flex-1 p-4 md:p-6">
           <h1 className="text-lg font-semibold mb-4">{page.title}</h1>

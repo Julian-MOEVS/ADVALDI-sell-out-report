@@ -221,3 +221,217 @@ function autoWidth(ws: XLSX.WorkSheet, data: (string | number)[][]) {
   }
   ws['!cols'] = cols;
 }
+
+/* ── Helpers for new formats ── */
+
+function dateToISOWeek(d: Date): string {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}${String(weekNo).padStart(2, '0')}`;
+}
+
+function parseDDMMYYYY(s: string): Date | null {
+  const parts = s.split('-');
+  if (parts.length !== 3) return null;
+  const [dd, mm, yyyy] = parts.map(Number);
+  if (!dd || !mm || !yyyy) return null;
+  return new Date(yyyy, mm - 1, dd);
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+/* ── Export Statistics parser (Shopify / Brincr Portaal) ── */
+
+export function parseExportStatistics(
+  file: File,
+  channel: string,
+  market: 'NL' | 'BE' = 'NL'
+): Promise<{ rows: DataRow[]; market: 'NL' | 'BE' }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+        if (raw.length < 2) { resolve({ rows: [], market }); return; }
+
+        const headers = raw[0].map(String);
+        const colArtNr = findCol(headers, 'Artikelnummer');
+        const colOmschr = findCol(headers, 'Omschrijving');
+        const colProducten = findCol(headers, 'Producten');
+        const colOrderNr = findCol(headers, 'Ordernummer');
+        const colBedrijf = findCol(headers, 'Bedrijfsnaam');
+        const colAantal = findCol(headers, 'Aantal producten');
+        const colOrderDatum = findCol(headers, 'Orderdatum');
+
+        const hasOrderDetails = colOrderNr >= 0 && colOrderDatum >= 0;
+        const rows: DataRow[] = [];
+
+        if (hasOrderDetails) {
+          let currentOmschr = '';
+          for (let i = 1; i < raw.length; i++) {
+            const r = raw[i];
+            if (!r || r.length === 0) continue;
+
+            const artNr = cleanStr(r[colArtNr]);
+            if (artNr) {
+              currentOmschr = cleanStr(r[colOmschr]);
+            }
+
+            const orderNr = cleanStr(r[colOrderNr]);
+            if (!orderNr) continue;
+
+            const bedrijf = cleanStr(r[colBedrijf]);
+            const aantal = cleanNum(r[colAantal]);
+            const datumStr = cleanStr(r[colOrderDatum]);
+            const datum = parseDDMMYYYY(datumStr);
+            const week = datum ? dateToISOWeek(datum) : '';
+
+            if (!week || !currentOmschr) continue;
+
+            rows.push({
+              w: week, rg: market, mfr: 'Pure Electric', pg: '',
+              an: currentOmschr, ean: '',
+              ch: channel, st: bedrijf,
+              sl: bedrijf ? `${channel} / ${bedrijf}` : channel,
+              p: 0, s: aantal, k: 0,
+            });
+          }
+        } else {
+          // Summary only – derive week from filename date
+          const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
+          let week = '';
+          if (dateMatch) {
+            const [y, m, d] = dateMatch[1].split('-').map(Number);
+            week = dateToISOWeek(new Date(y, m - 1, d));
+          }
+
+          for (let i = 1; i < raw.length; i++) {
+            const r = raw[i];
+            if (!r || r.length === 0) continue;
+            const artNr = cleanStr(r[colArtNr]);
+            if (!artNr) continue;
+            const omschr = cleanStr(r[colOmschr]);
+            const producten = cleanNum(r[colProducten]);
+            if (!omschr) continue;
+
+            rows.push({
+              w: week || 'onbekend', rg: market, mfr: 'Pure Electric', pg: '',
+              an: omschr, ean: '',
+              ch: channel, st: '', sl: channel,
+              p: 0, s: producten, k: 0,
+            });
+          }
+        }
+
+        resolve({ rows, market });
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('Bestand kon niet worden gelezen'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/* ── FNAC / Vanden Borre CSV parser ── */
+
+export function parseFnacVdbCsv(file: File): Promise<{ rows: DataRow[]; market: 'NL' | 'BE' }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target!.result as string;
+        const lines = text.split(/\r?\n/);
+
+        // Extract week from "Week YYYYMMDD --> YYYYMMDD" line
+        let week = '';
+        for (const line of lines) {
+          const m = line.match(/Week\s+(\d{8})/);
+          if (m) {
+            const ds = m[1];
+            const y = parseInt(ds.slice(0, 4));
+            const mo = parseInt(ds.slice(4, 6)) - 1;
+            const d = parseInt(ds.slice(6, 8));
+            week = dateToISOWeek(new Date(y, mo, d));
+            break;
+          }
+        }
+
+        // Find header row
+        const headerIdx = lines.findIndex((l) => l.startsWith('Marque'));
+        if (headerIdx < 0) { resolve({ rows: [], market: 'BE' }); return; }
+
+        const headers = parseCSVLine(lines[headerIdx]);
+        const ci = (name: string) => headers.findIndex((h) => h.trim() === name);
+        const colMarque = ci('Marque');
+        const colFamily = ci('Family');
+        const colArticle = ci('Article Name');
+        const colEan = ci('EAN-CODE');
+        const colSalesVDB = ci('Sales Qty VDB');
+        const colSalesFNAC = ci('Sales Qty FNAC');
+        const colStockVDB = ci('Stock Phy VDB');
+        const colStockFNAC = ci('Stock Phy FNAC');
+
+        const rows: DataRow[] = [];
+        const csvNum = (v: string | undefined) =>
+          parseInt((v || '0').replace(/"/g, '').trim()) || 0;
+
+        for (let i = headerIdx + 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line || line.startsWith('TOTAL') || line.startsWith('END')) break;
+
+          const cols = parseCSVLine(line);
+          const article = (cols[colArticle] || '').trim();
+          if (!article) continue;
+
+          const marque = (cols[colMarque] || '').trim();
+          const family = (cols[colFamily] || '').trim();
+          const ean = (cols[colEan] || '').trim();
+          const salesVDB = csvNum(cols[colSalesVDB]);
+          const salesFNAC = csvNum(cols[colSalesFNAC]);
+          const stockVDB = csvNum(cols[colStockVDB]);
+          const stockFNAC = csvNum(cols[colStockFNAC]);
+
+          // VDB row
+          rows.push({
+            w: week, rg: 'BE', mfr: marque, pg: family,
+            an: article, ean, ch: 'Vanden Borre', st: 'Vanden Borre',
+            sl: 'Vanden Borre', p: 0, s: salesVDB, k: stockVDB,
+          });
+          // FNAC row
+          rows.push({
+            w: week, rg: 'BE', mfr: marque, pg: family,
+            an: article, ean, ch: 'FNAC', st: 'FNAC',
+            sl: 'FNAC', p: 0, s: salesFNAC, k: stockFNAC,
+          });
+        }
+
+        resolve({ rows, market: 'BE' });
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('Bestand kon niet worden gelezen'));
+    reader.readAsText(file);
+  });
+}

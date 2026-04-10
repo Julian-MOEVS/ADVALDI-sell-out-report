@@ -12,9 +12,9 @@ export default function Topbar() {
   const allWeeks = weeks(data);
 
   return (
-    <header className="sticky top-0 z-30 h-[50px] bg-bg border-b border-white/5 flex items-center justify-between px-4">
-      <button className="md:hidden text-gray-400" onClick={() => setSidebarOpen(true)}>
-        <Menu size={20} />
+    <header className="sticky top-0 z-30 h-[60px] bg-white border-b border-bg4 flex items-center justify-between px-5 shadow-sm">
+      <button className="md:hidden text-dark/60" onClick={() => setSidebarOpen(true)}>
+        <Menu size={22} />
       </button>
       <div className="hidden md:block" />
 
@@ -22,7 +22,7 @@ export default function Topbar() {
         <select
           value={selectedWeek}
           onChange={(e) => setSelectedWeek(e.target.value)}
-          className="bg-bg2 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent"
+          className="bg-bg border border-bg4 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:border-accent font-light"
         >
           <option value="all">Alle weken</option>
           {allWeeks.map((w) => (
@@ -35,7 +35,7 @@ export default function Topbar() {
         <select
           value={selectedMarket}
           onChange={(e) => setSelectedMarket(e.target.value as 'all' | 'NL' | 'BE')}
-          className="bg-bg2 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent"
+          className="bg-bg border border-bg4 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:border-accent font-light"
         >
           <option value="all">Alle markten</option>
           <option value="NL">Nederland</option>
@@ -44,9 +44,9 @@ export default function Topbar() {
 
         <button
           onClick={() => setActivePage('import')}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg hover:bg-accent/80 transition text-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-accent-light to-accent text-white rounded-2xl hover:opacity-90 transition text-sm font-semibold shadow-md"
         >
-          <Plus size={14} />
+          <Plus size={15} />
           Excel
         </button>
       </div>

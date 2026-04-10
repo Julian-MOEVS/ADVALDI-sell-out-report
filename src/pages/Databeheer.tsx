@@ -67,33 +67,33 @@ export default function Databeheer() {
   return (
     <div className="space-y-8">
       {/* Section 1: Data storage */}
-      <section className="bg-bg2 border border-white/5 rounded-xl p-5">
-        <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+      <section className="bg-white border border-bg4 rounded-3xl shadow-sm p-5">
+        <h3 className="text-sm font-medium text-dark/60 mb-3 flex items-center gap-2">
           <Database size={16} /> Dataopslag
         </h3>
-        <p className="text-sm text-gray-400 mb-3">
+        <p className="text-sm text-dark/50 mb-3">
           Alle data wordt lokaal opgeslagen in je browser (localStorage). Er wordt niets naar een server gestuurd.
         </p>
-        <div className="flex gap-4 text-sm text-gray-400 mb-4">
-          <span>Ingebouwde rijen: <strong className="text-white">{EMBEDDED_DATA.length}</strong></span>
-          <span>Geïmporteerde rijen: <strong className="text-white">{userData.length}</strong></span>
-          <span>Productnamen (aliases): <strong className="text-white">{Object.keys(aliases).length}</strong></span>
+        <div className="flex gap-4 text-sm text-dark/50 mb-4">
+          <span>Ingebouwde rijen: <strong className="text-dark">{EMBEDDED_DATA.length}</strong></span>
+          <span>Geïmporteerde rijen: <strong className="text-dark">{userData.length}</strong></span>
+          <span>Productnamen (aliases): <strong className="text-dark">{Object.keys(aliases).length}</strong></span>
         </div>
         <button
           onClick={handleExportBackup}
-          className="flex items-center gap-2 px-3 py-2 bg-bg3 text-gray-300 rounded-lg hover:bg-bg4 transition text-sm"
+          className="flex items-center gap-2 px-3 py-2 bg-bg text-dark/60 rounded-lg hover:bg-bg4 transition text-sm"
         >
           <Download size={14} /> Exporteer back-up
         </button>
       </section>
 
       {/* Section 2: Week management */}
-      <section className="bg-bg2 border border-white/5 rounded-xl p-5">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Weken beheren</h3>
+      <section className="bg-white border border-bg4 rounded-3xl shadow-sm p-5">
+        <h3 className="text-sm font-medium text-dark/60 mb-3">Weken beheren</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 text-xs uppercase">
+              <tr className="text-left text-dark/40 text-xs uppercase">
                 <th className="pb-2 pr-3">Week</th>
                 <th className="pb-2 pr-3">Markt</th>
                 <th className="pb-2 pr-3">Bron</th>
@@ -105,12 +105,12 @@ export default function Databeheer() {
             </thead>
             <tbody>
               {combos.map((c) => (
-                <tr key={`${c.w}-${c.rg}`} className="border-t border-white/5">
+                <tr key={`${c.w}-${c.rg}`} className="border-t border-bg4">
                   <td className="py-2 pr-3">Week {parseInt(c.w.slice(-2))} ({c.w})</td>
                   <td className="py-2 pr-3"><MarketPill market={c.rg} /></td>
                   <td className="py-2 pr-3">
                     <span className={`text-xs px-2 py-0.5 rounded ${
-                      c.source === 'Ingebouwd' ? 'bg-gray-600/30 text-gray-400'
+                      c.source === 'Ingebouwd' ? 'bg-gray-600/30 text-dark/50'
                         : c.source === 'Geïmporteerd' ? 'bg-accent/20 text-accent'
                         : 'bg-info/20 text-info'
                     }`}>
@@ -138,7 +138,7 @@ export default function Databeheer() {
                 </tr>
               ))}
               {combos.length === 0 && (
-                <tr><td colSpan={7} className="py-6 text-center text-gray-500">Geen data beschikbaar</td></tr>
+                <tr><td colSpan={7} className="py-6 text-center text-dark/40">Geen data beschikbaar</td></tr>
               )}
             </tbody>
           </table>
@@ -146,9 +146,9 @@ export default function Databeheer() {
       </section>
 
       {/* Section 3: Product name aliases */}
-      <section className="bg-bg2 border border-white/5 rounded-xl p-5">
+      <section className="bg-white border border-bg4 rounded-3xl shadow-sm p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-gray-300">Productnamen</h3>
+          <h3 className="text-sm font-medium text-dark/60">Productnamen</h3>
           {Object.keys(aliases).length > 0 && (
             <button
               onClick={() => {
@@ -165,15 +165,15 @@ export default function Databeheer() {
           placeholder="Zoek op artikelnaam of merk..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-bg3 border border-white/10 rounded-lg px-4 py-2 text-sm mb-3 focus:outline-none focus:border-accent"
+          className="w-full bg-bg border border-bg4 rounded-lg px-4 py-2 text-sm mb-3 focus:outline-none focus:border-accent"
         />
         <div className="space-y-1 max-h-[400px] overflow-y-auto">
           {articles.slice(0, 50).map((a) => (
-            <div key={a.an} className="flex items-center gap-3 py-1.5 px-2 rounded hover:bg-bg3">
+            <div key={a.an} className="flex items-center gap-3 py-1.5 px-2 rounded hover:bg-bg">
               <div className="flex-1 min-w-0">
-                <span className="text-xs text-gray-500 truncate block" title={a.an}>{a.an}</span>
+                <span className="text-xs text-dark/40 truncate block" title={a.an}>{a.an}</span>
               </div>
-              <span className="text-xs px-2 py-0.5 bg-bg4 text-gray-400 rounded shrink-0">{a.mfr}</span>
+              <span className="text-xs px-2 py-0.5 bg-bg4 text-dark/50 rounded shrink-0">{a.mfr}</span>
               <input
                 type="text"
                 placeholder="Weergavenaam"
@@ -183,12 +183,12 @@ export default function Databeheer() {
                   if (val && val !== a.an) setAlias(a.an, val);
                   else if (!val && aliases[a.an]) clearAlias(a.an);
                 }}
-                className="w-48 bg-bg3 border border-white/10 rounded px-2 py-1 text-sm focus:outline-none focus:border-accent"
+                className="w-48 bg-bg border border-bg4 rounded px-2 py-1 text-sm focus:outline-none focus:border-accent"
               />
               {aliases[a.an] && (
                 <button
                   onClick={() => clearAlias(a.an)}
-                  className="text-gray-500 hover:text-white transition"
+                  className="text-dark/40 hover:text-dark transition"
                   title="Reset naam"
                 >
                   <RotateCcw size={14} />
@@ -197,10 +197,10 @@ export default function Databeheer() {
             </div>
           ))}
           {articles.length === 0 && (
-            <p className="text-center text-gray-500 py-4">Geen artikelen gevonden</p>
+            <p className="text-center text-dark/40 py-4">Geen artikelen gevonden</p>
           )}
           {articles.length > 50 && (
-            <p className="text-xs text-gray-500 text-center py-2">...en {articles.length - 50} overige. Gebruik de zoekbalk om te filteren.</p>
+            <p className="text-xs text-dark/40 text-center py-2">...en {articles.length - 50} overige. Gebruik de zoekbalk om te filteren.</p>
           )}
         </div>
       </section>

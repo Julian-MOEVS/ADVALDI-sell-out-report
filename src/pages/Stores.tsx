@@ -31,11 +31,11 @@ export default function Stores() {
   }, [rows, totalSales]);
 
   return (
-    <div className="bg-bg2 border border-white/5 rounded-xl overflow-hidden">
+    <div className="bg-white border border-bg4 rounded-3xl shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-gray-500 text-xs uppercase bg-bg3">
+            <tr className="text-left text-dark/40 text-xs uppercase bg-bg">
               <th className="p-3">#</th>
               <th className="p-3">Winkel</th>
               <th className="p-3">Markt</th>
@@ -48,8 +48,8 @@ export default function Stores() {
           </thead>
           <tbody>
             {stores.map((s, i) => (
-              <tr key={s.store} className="border-t border-white/5 hover:bg-bg3/50 transition">
-                <td className="p-3 text-gray-500">{i + 1}</td>
+              <tr key={s.store} className="border-t border-bg4 hover:bg-bg/50 transition">
+                <td className="p-3 text-dark/40">{i + 1}</td>
                 <td className="p-3 max-w-[220px]">
                   <button
                     onClick={() => setActivePage('storedetail', s.store)}
@@ -68,7 +68,7 @@ export default function Stores() {
               </tr>
             ))}
             {stores.length === 0 && (
-              <tr><td colSpan={8} className="p-8 text-center text-gray-500">Geen winkels gevonden</td></tr>
+              <tr><td colSpan={8} className="p-8 text-center text-dark/40">Geen winkels gevonden</td></tr>
             )}
           </tbody>
         </table>
