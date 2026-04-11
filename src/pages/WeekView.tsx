@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { filtered, weeks, sum, groupBy, stockForArticle } from '../lib/filters';
+import { filtered, weeks, sum, groupBy, stockForArticle, resolveProductKey, resolvedDisplayName, resolveStoreKey } from '../lib/filters';
 import { exportWeekExcel, exportBrandExcel } from '../lib/excel';
 import StatCard from '../components/ui/StatCard';
 import MarketPill from '../components/ui/MarketPill';
 import { ShoppingCart, Package, TrendingUp, Store, Download } from 'lucide-react';
 
 export default function WeekView() {
-  const { allData, displayName, aliases } = useAppStore();
+  const { allData, aliases } = useAppStore();
   const data = allData();
   const allWeeks = weeks(data);
 
@@ -30,25 +30,27 @@ export default function WeekView() {
   const deltaSales = prevWeek ? totalSales - prevSales : null;
   const totalStock = rows.reduce((a, r) => a + r.k, 0);
   const totalPurchase = sum(rows, 'p');
-  const activeStores = new Set(rows.map((r) => r.sl || r.st)).size;
+  const activeStores = new Set(rows.map((r) => resolveStoreKey(r))).size;
 
-  // Top products
+  // Top products — grouped by resolved catalog key
   const topProducts = useMemo(() => {
-    const g = groupBy(rows, (r) => r.an);
-    const prevG = groupBy(prevRows, (r) => r.an);
+    const g = groupBy(rows, resolveProductKey);
+    const prevG = groupBy(prevRows, resolveProductKey);
     return Object.entries(g)
-      .map(([an, aRows]) => {
+      .map(([key, aRows]) => {
         const s = aRows.reduce((a, r) => a + r.s, 0);
         const k = aRows.reduce((a, r) => a + r.k, 0);
-        const pS = prevG[an] ? prevG[an].reduce((a, r) => a + r.s, 0) : null;
-        return { an, mfr: aRows[0].mfr, s, k, delta: pS !== null ? s - pS : null };
+        const pS = prevG[key] ? prevG[key].reduce((a, r) => a + r.s, 0) : null;
+        const name = resolvedDisplayName(key, aliases);
+        const mfr = aRows[0].mfr;
+        return { key, name, mfr, s, k, delta: pS !== null ? s - pS : null };
       })
       .sort((a, b) => b.s - a.s);
-  }, [rows, prevRows]);
+  }, [rows, prevRows, aliases]);
 
-  // Top stores
+  // Top stores — Shopify/Brincr grouped by channel
   const topStores = useMemo(() => {
-    const g = groupBy(rows, (r) => r.sl || r.st);
+    const g = groupBy(rows, resolveStoreKey);
     return Object.entries(g)
       .map(([store, sRows]) => ({
         store,
@@ -58,20 +60,26 @@ export default function WeekView() {
       .sort((a, b) => b.sales - a.sales);
   }, [rows]);
 
-  // Brand breakdown
+  // Brand breakdown — with resolved product names
   const brandGroups = useMemo(() => {
     const g = groupBy(rows, (r) => r.mfr);
     return Object.entries(g)
       .map(([brand, bRows]) => {
         const sales = bRows.reduce((a, r) => a + r.s, 0);
         const stock = stockForArticle(bRows);
-        const articles = groupBy(bRows, (r) => r.an);
-        const withSales = Object.entries(articles).filter(([, ar]) => ar.reduce((a, r) => a + r.s, 0) > 0);
-        const withoutSales = Object.entries(articles).length - withSales.length;
-        return { brand, rows: bRows, sales, stock, articles, withSales, withoutSales, market: bRows[0].rg };
+        const articles = groupBy(bRows, resolveProductKey);
+        const articleEntries = Object.entries(articles).map(([key, ar]) => ({
+          key,
+          name: resolvedDisplayName(key, aliases),
+          sales: ar.reduce((a, r) => a + r.s, 0),
+          stock: ar.reduce((a, r) => a + r.k, 0),
+        }));
+        const withSales = articleEntries.filter((a) => a.sales > 0);
+        const withoutSales = articleEntries.length - withSales.length;
+        return { brand, sales, stock, articleEntries: withSales, withoutSales, market: bRows[0].rg };
       })
       .sort((a, b) => b.sales - a.sales);
-  }, [rows]);
+  }, [rows, aliases]);
 
   const marketLabel = activeMarket === 'all' ? 'NL+BE' : activeMarket === 'NL' ? 'NL' : 'BE/LU';
 
@@ -162,9 +170,9 @@ export default function WeekView() {
               </thead>
               <tbody>
                 {topProducts.slice(0, 20).map((p, i) => (
-                  <tr key={p.an} className="border-t border-bg4">
+                  <tr key={p.key} className="border-t border-bg4">
                     <td className="py-1.5 pr-2 text-dark/40">{i + 1}</td>
-                    <td className="py-1.5 pr-2 truncate max-w-[180px]" title={p.an}>{displayName(p.an)}</td>
+                    <td className="py-1.5 pr-2 truncate max-w-[180px]" title={p.name}>{p.name}</td>
                     <td className="py-1.5 pr-2 text-dark/50">{p.mfr}</td>
                     <td className="py-1.5 pr-2 text-right font-mono">{p.s}</td>
                     <td className="py-1.5 pr-2 text-right font-mono">
@@ -228,7 +236,7 @@ export default function WeekView() {
               <span className="ml-auto flex gap-2">
                 <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent rounded">{bg.sales} verkopen</span>
                 <span className="text-xs px-2 py-0.5 bg-info/20 text-info rounded">{bg.stock} voorraad</span>
-                <span className="text-xs text-dark/40">{Object.keys(bg.articles).length} artikel(en)</span>
+                <span className="text-xs text-dark/40">{bg.articleEntries.length + bg.withoutSales} artikel(en)</span>
               </span>
             </summary>
             <div className="mt-1 ml-4 overflow-x-auto">
@@ -241,11 +249,11 @@ export default function WeekView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {bg.withSales.map(([an, ar]) => (
-                    <tr key={an} className="border-t border-bg4">
-                      <td className="py-1 pr-2 truncate max-w-[240px]" title={an}>{displayName(an)}</td>
-                      <td className="py-1 pr-2 text-right font-mono">{ar.reduce((a, r) => a + r.s, 0)}</td>
-                      <td className="py-1 text-right font-mono">{ar.reduce((a, r) => a + r.k, 0)}</td>
+                  {bg.articleEntries.map((a) => (
+                    <tr key={a.key} className="border-t border-bg4">
+                      <td className="py-1 pr-2 truncate max-w-[240px]" title={a.name}>{a.name}</td>
+                      <td className="py-1 pr-2 text-right font-mono">{a.sales}</td>
+                      <td className="py-1 text-right font-mono">{a.stock}</td>
                     </tr>
                   ))}
                 </tbody>

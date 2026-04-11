@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
 import type { CatalogEntry } from './supabase';
-import { stockForArticle, groupBy } from './filters';
+import { stockForArticle, groupBy, resolveProductKey, resolvedDisplayName, resolveStoreKey } from './filters';
 
 interface ColMap {
   week: number;
@@ -137,28 +137,29 @@ export function exportWeekExcel(
   prevRows: DataRow[],
   aliases: Record<string, string>
 ): void {
-  const prevByAn = groupBy(prevRows, (r) => r.an);
+  const prevByProduct = groupBy(prevRows, resolveProductKey);
 
   const prodData: (string | number)[][] = [
-    ['Week', 'Markt', 'Merk', 'Artikel (origineel)', 'Weergavenaam', 'Productgroep', 'EAN', 'Verkopen', 'Delta vorige week', 'Voorraad', 'Inkopen'],
+    ['Week', 'Markt', 'Merk', 'SKU', 'Weergavenaam', 'Productgroep', 'EAN', 'Verkopen', 'Delta vorige week', 'Voorraad', 'Inkopen'],
   ];
 
-  const articleGroups = groupBy(rows, (r) => r.an);
-  for (const [an, articleRows] of Object.entries(articleGroups)) {
+  const productGroups = groupBy(rows, resolveProductKey);
+  for (const [key, articleRows] of Object.entries(productGroups)) {
     const s = articleRows.reduce((a, r) => a + r.s, 0);
     const k = stockForArticle(articleRows);
     const p = articleRows.reduce((a, r) => a + r.p, 0);
-    const prev = prevByAn[an];
+    const prev = prevByProduct[key];
     const prevS = prev ? prev.reduce((a, r) => a + r.s, 0) : 0;
     const delta = prev ? s - prevS : 0;
     const first = articleRows[0];
+    const name = resolvedDisplayName(key, aliases);
     prodData.push([
-      week, market, first.mfr, an, aliases[an] || an, first.pg, first.ean,
+      week, market, first.mfr, key, name, first.pg, first.ean,
       s, delta, k, p,
     ]);
   }
 
-  const storeGroups = groupBy(rows, (r) => r.sl || r.st);
+  const storeGroups = groupBy(rows, resolveStoreKey);
   const storeData: (string | number)[][] = [
     ['Week', 'Markt', 'Winkel', 'Verkopen', 'Voorraad'],
   ];
@@ -179,7 +180,7 @@ export function exportWeekExcel(
 
   XLSX.utils.book_append_sheet(wb, ws1, 'Producten');
   XLSX.utils.book_append_sheet(wb, ws2, 'Winkels');
-  XLSX.writeFile(wb, `MOEVS_Week_${week}_${market}.xlsx`);
+  XLSX.writeFile(wb, `ADVALDI_Week_${week}_${market}.xlsx`);
 }
 
 export function exportBrandExcel(
@@ -190,23 +191,24 @@ export function exportBrandExcel(
 ): void {
   const brandGroups = groupBy(rows, (r) => r.mfr);
   const allRows: (string | number)[][] = [
-    ['Merk', 'Artikel (origineel)', 'Weergavenaam', 'EAN', 'Verkopen', 'Voorraad', 'Inkopen'],
+    ['Merk', 'SKU', 'Weergavenaam', 'EAN', 'Verkopen', 'Voorraad', 'Inkopen'],
   ];
 
   for (const [brand, brandRows] of Object.entries(brandGroups)) {
-    const articleGroups = groupBy(brandRows, (r) => r.an);
+    const productGroups = groupBy(brandRows, resolveProductKey);
     let totalS = 0;
     let totalK = 0;
     let totalP = 0;
 
-    for (const [an, articleRows] of Object.entries(articleGroups)) {
+    for (const [key, articleRows] of Object.entries(productGroups)) {
       const s = articleRows.reduce((a, r) => a + r.s, 0);
       const k = stockForArticle(articleRows);
       const p = articleRows.reduce((a, r) => a + r.p, 0);
       totalS += s;
       totalK += k;
       totalP += p;
-      allRows.push([brand, an, aliases[an] || an, articleRows[0].ean, s, k, p]);
+      const name = resolvedDisplayName(key, aliases);
+      allRows.push([brand, key, name, articleRows[0].ean, s, k, p]);
     }
 
     allRows.push([`TOTAAL ${brand}`, '', '', '', totalS, totalK, totalP]);
@@ -217,7 +219,7 @@ export function exportBrandExcel(
   const ws = XLSX.utils.aoa_to_sheet(allRows);
   autoWidth(ws, allRows);
   XLSX.utils.book_append_sheet(wb, ws, 'Per merk');
-  XLSX.writeFile(wb, `MOEVS_Merken_${week}_${market}.xlsx`);
+  XLSX.writeFile(wb, `ADVALDI_Merken_${week}_${market}.xlsx`);
 }
 
 function autoWidth(ws: XLSX.WorkSheet, data: (string | number)[][]) {

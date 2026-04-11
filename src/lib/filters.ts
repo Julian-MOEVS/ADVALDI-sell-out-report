@@ -1,4 +1,5 @@
 import type { DataRow } from '../types';
+import { matchToCatalog, catalogDisplayName } from './catalog';
 
 export function filtered(
   data: DataRow[],
@@ -41,4 +42,33 @@ export function groupBy<T>(arr: T[], keyFn: (item: T) => string): Record<string,
     result[key].push(item);
   }
   return result;
+}
+
+/**
+ * Resolve a DataRow to its product key (catalog SKU or original article name).
+ * Use this to group sell-out data by resolved product.
+ */
+export function resolveProductKey(r: DataRow): string {
+  return matchToCatalog(r.an, r.ean, r.sku) || r.an;
+}
+
+/**
+ * Get the display name for a resolved product key.
+ */
+export function resolvedDisplayName(key: string, aliases: Record<string, string>): string {
+  if (aliases[key]) return aliases[key];
+  const catName = catalogDisplayName(key);
+  if (catName) return catName;
+  return key;
+}
+
+/**
+ * Resolve a store name. Channels like "Shopify" or "Brincr Portaal"
+ * are grouped by channel name instead of per-customer store names.
+ */
+const CHANNEL_STORES = ['shopify', 'brincr portaal'];
+
+export function resolveStoreKey(r: DataRow): string {
+  if (r.ch && CHANNEL_STORES.includes(r.ch.toLowerCase())) return r.ch;
+  return r.sl || r.st;
 }

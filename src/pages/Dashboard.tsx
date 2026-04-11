@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { filtered, weeks, sum, stockForData, groupBy } from '../lib/filters';
+import { filtered, weeks, sum, stockForData, groupBy, resolveProductKey, resolvedDisplayName, resolveStoreKey } from '../lib/filters';
 import StatCard from '../components/ui/StatCard';
 import MarketPill from '../components/ui/MarketPill';
 import RankBadge from '../components/ui/RankBadge';
@@ -10,7 +10,7 @@ import TopProductsChart from '../components/charts/TopProductsChart';
 import { ShoppingCart, Package, TrendingUp, Box, Store, Calendar } from 'lucide-react';
 
 export default function Dashboard() {
-  const { allData, selectedWeek, selectedMarket, displayName, setActivePage } = useAppStore();
+  const { allData, selectedWeek, selectedMarket, displayName, aliases, setActivePage } = useAppStore();
   const data = allData();
   const rows = useMemo(() => filtered(data, selectedWeek, selectedMarket), [data, selectedWeek, selectedMarket]);
 
@@ -18,8 +18,8 @@ export default function Dashboard() {
   const totalSales = sum(rows, 's');
   const totalStock = stockForData(rows, selectedWeek);
   const totalPurchase = sum(rows, 'p');
-  const uniqueProducts = new Set(rows.map((r) => r.an)).size;
-  const uniqueStores = new Set(rows.map((r) => r.sl || r.st)).size;
+  const uniqueProducts = new Set(rows.map(resolveProductKey)).size;
+  const uniqueStores = new Set(rows.map(resolveStoreKey)).size;
   const weekCount = weeks(rows).length;
 
   // Delta calc
@@ -37,9 +37,9 @@ export default function Dashboard() {
     }
   }
 
-  // Top stores
+  // Top stores — grouped by resolved store key
   const storeGroups = useMemo(() => {
-    const g = groupBy(rows, (r) => r.sl || r.st);
+    const g = groupBy(rows, resolveStoreKey);
     return Object.entries(g)
       .map(([store, sRows]) => ({
         store,
@@ -50,20 +50,22 @@ export default function Dashboard() {
       .slice(0, 10);
   }, [rows]);
 
-  // Low stock
+  // Low stock — grouped by resolved product key
   const lowStock = useMemo(() => {
-    const g = groupBy(rows, (r) => r.an);
+    const g = groupBy(rows, resolveProductKey);
     return Object.entries(g)
-      .map(([an, aRows]) => {
+      .map(([key, aRows]) => {
         const wks = [...new Set(aRows.map((r) => r.w))].sort();
         const last = wks[wks.length - 1];
         const stock = last ? aRows.filter((r) => r.w === last).reduce((s, r) => s + r.k, 0) : 0;
-        return { an, mfr: aRows[0].mfr, stock };
+        const name = resolvedDisplayName(key, aliases);
+        const mfr = aRows[0].mfr;
+        return { key, name, mfr, stock };
       })
       .filter((a) => a.stock < 3)
       .sort((a, b) => a.stock - b.stock)
       .slice(0, 10);
-  }, [rows]);
+  }, [rows, aliases]);
 
   if (data.length === 0) {
     return (
@@ -163,9 +165,9 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {lowStock.map((a) => (
-                  <tr key={a.an} className="border-t border-bg4">
+                  <tr key={a.key} className="border-t border-bg4">
                     <td className="py-1.5 pr-2 max-w-[200px]">
-                      <button onClick={() => setActivePage('productdetail', a.an)} className="text-accent hover:underline truncate block text-left max-w-full" title={a.an}>{displayName(a.an)}</button>
+                      <button onClick={() => setActivePage('productdetail', a.key)} className="text-accent hover:underline truncate block text-left max-w-full" title={a.name}>{a.name}</button>
                     </td>
                     <td className="py-1.5 pr-2 text-dark/50">{a.mfr}</td>
                     <td className={`py-1.5 text-right font-mono font-bold ${a.stock === 0 ? 'text-danger' : 'text-warning'}`}>

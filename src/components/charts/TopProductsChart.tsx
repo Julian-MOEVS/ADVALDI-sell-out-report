@@ -2,20 +2,23 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import type { DataRow } from '../../types';
-import { groupBy } from '../../lib/filters';
+import { groupBy, resolveProductKey, resolvedDisplayName } from '../../lib/filters';
 
 interface Props {
   data: DataRow[];
   displayName: (orig: string) => string;
 }
 
-export default function TopProductsChart({ data, displayName }: Props) {
-  const byArticle = groupBy(data, (r) => r.an);
-  const chartData = Object.entries(byArticle)
-    .map(([an, rows]) => ({
-      name: displayName(an).length > 30 ? displayName(an).slice(0, 27) + '...' : displayName(an),
-      verkopen: rows.reduce((a, r) => a + r.s, 0),
-    }))
+export default function TopProductsChart({ data }: Props) {
+  const byProduct = groupBy(data, resolveProductKey);
+  const chartData = Object.entries(byProduct)
+    .map(([key, rows]) => {
+      const name = resolvedDisplayName(key, {});
+      return {
+        name: name.length > 30 ? name.slice(0, 27) + '...' : name,
+        verkopen: rows.reduce((a, r) => a + r.s, 0),
+      };
+    })
     .sort((a, b) => b.verkopen - a.verkopen)
     .slice(0, 8);
 
