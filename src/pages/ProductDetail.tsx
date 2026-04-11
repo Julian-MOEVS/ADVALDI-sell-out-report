@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
+import { matchToCatalog } from '../lib/catalog';
 import StatCard from '../components/ui/StatCard';
 import MarketPill from '../components/ui/MarketPill';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -15,7 +16,15 @@ export default function ProductDetail() {
   const data = allData();
   const articleName = detailId;
 
-  const allRows = useMemo(() => data.filter((r) => r.an === articleName), [data, articleName]);
+  // Find the resolved catalog SKU for this article, then include ALL rows that resolve to the same SKU
+  const resolvedSku = useMemo(() => matchToCatalog(articleName), [articleName]);
+  const allRows = useMemo(() => {
+    if (!resolvedSku) return data.filter((r) => r.an === articleName);
+    return data.filter((r) => {
+      const rSku = matchToCatalog(r.an, r.ean, r.sku);
+      return rSku === resolvedSku || r.an === articleName;
+    });
+  }, [data, articleName, resolvedSku]);
   const rows = useMemo(() => filtered(allRows, selectedWeek, selectedMarket), [allRows, selectedWeek, selectedMarket]);
 
   const allWeeks = weeks(data);

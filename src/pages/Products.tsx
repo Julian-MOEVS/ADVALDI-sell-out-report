@@ -1,15 +1,17 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
+import { filtered, weeks, stockForArticle } from '../lib/filters';
 import { getDynamicCatalog, matchToCatalog, setDynamicCatalog } from '../lib/catalog';
 import { parseCatalogExcel } from '../lib/excel';
 import { upsertCatalog, fetchCatalog } from '../lib/supabase';
 import type { CatalogEntry } from '../lib/supabase';
+import type { DataRow } from '../types';
 import Sparkline from '../components/ui/Sparkline';
 import StatusBadge from '../components/ui/StatusBadge';
 import { Upload, FileSpreadsheet, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ProductRow {
+  key: string;        // unique key: catalog SKU or original article name
   sku: string;
   name: string;
   ean: string;
@@ -20,6 +22,7 @@ interface ProductRow {
   p: number;
   weekSales: number[];
   hasSalesData: boolean;
+  articleNames: string[]; // original article names (for detail page linking)
 }
 
 export default function Products() {
@@ -36,45 +39,64 @@ export default function Products() {
   const allWeeks = weeks(data);
   const catalog = useMemo(() => getDynamicCatalog(), [data]);
 
-  // Build product list: start from catalog, merge in sales data
+  // Build product list: resolve each row to catalog SKU, then group
   const products = useMemo((): ProductRow[] => {
-    // Group sell-out data by article name
-    const salesByArticle = groupBy(rows, (r) => r.an);
+    // 1. Resolve every sell-out row to a product key (catalog SKU or original name)
+    const resolvedRows: { key: string; row: DataRow }[] = rows.map((r) => {
+      const catalogSku = matchToCatalog(r.an, r.ean, r.sku);
+      return { key: catalogSku || r.an, row: r };
+    });
 
-    // Track which catalog SKUs have been matched
-    const matchedSkus = new Set<string>();
+    // 2. Group resolved rows by product key
+    const groups: Record<string, DataRow[]> = {};
+    const articleNamesPerKey: Record<string, Set<string>> = {};
+    for (const { key, row } of resolvedRows) {
+      if (!groups[key]) {
+        groups[key] = [];
+        articleNamesPerKey[key] = new Set();
+      }
+      groups[key].push(row);
+      articleNamesPerKey[key].add(row.an);
+    }
+
+    // Track which catalog SKUs have sales data
+    const matchedSkus = new Set<string>(Object.keys(groups));
     const result: ProductRow[] = [];
 
-    // 1. Process sell-out articles and match to catalog
-    for (const [an, aRows] of Object.entries(salesByArticle)) {
-      const s = aRows.reduce((a, r) => a + r.s, 0);
-      const k = stockForArticle(aRows);
-      const p = aRows.reduce((a, r) => a + r.p, 0);
-      const byWeek = groupBy(aRows, (r) => r.w);
-      const weekSales = allWeeks.map((w) =>
-        byWeek[w] ? byWeek[w].reduce((a, r) => a + r.s, 0) : 0
-      );
+    // 3. Build product rows from grouped data
+    for (const [key, gRows] of Object.entries(groups)) {
+      const s = gRows.reduce((a, r) => a + r.s, 0);
+      const k = stockForArticle(gRows);
+      const p = gRows.reduce((a, r) => a + r.p, 0);
 
-      const catalogSku = matchToCatalog(an, aRows[0].ean, aRows[0].sku);
-      const catEntry = catalogSku ? catalog.find((c) => c.sku === catalogSku) : undefined;
+      // Build per-week sales
+      const weekMap: Record<string, number> = {};
+      for (const r of gRows) {
+        weekMap[r.w] = (weekMap[r.w] || 0) + r.s;
+      }
+      const weekSales = allWeeks.map((w) => weekMap[w] || 0);
 
-      if (catalogSku) matchedSkus.add(catalogSku);
+      const catEntry = catalog.find((c) => c.sku === key);
+      const firstRow = gRows[0];
 
       result.push({
-        sku: catEntry?.sku || aRows[0].sku || '',
-        name: catEntry?.name || an,
-        ean: catEntry?.ean || aRows[0].ean || '',
-        brand: catEntry?.brand || aRows[0].mfr || '',
-        pg: aRows[0].pg || '',
+        key,
+        sku: catEntry?.sku || firstRow.sku || '',
+        name: catEntry?.name || firstRow.an,
+        ean: catEntry?.ean || firstRow.ean || '',
+        brand: catEntry?.brand || firstRow.mfr || '',
+        pg: firstRow.pg || '',
         s, k, p, weekSales,
         hasSalesData: true,
+        articleNames: [...articleNamesPerKey[key]],
       });
     }
 
-    // 2. Add catalog products without sales data
+    // 4. Add catalog products without any sales data
     for (const cat of catalog) {
       if (!matchedSkus.has(cat.sku)) {
         result.push({
+          key: cat.sku,
           sku: cat.sku,
           name: cat.name,
           ean: cat.ean,
@@ -83,6 +105,7 @@ export default function Products() {
           s: 0, k: 0, p: 0,
           weekSales: allWeeks.map(() => 0),
           hasSalesData: false,
+          articleNames: [],
         });
       }
     }
@@ -93,11 +116,9 @@ export default function Products() {
   const filtered2 = useMemo(() => {
     let list = products;
 
-    // Filter by sales status
     if (filter === 'with-sales') list = list.filter((p) => p.hasSalesData);
     else if (filter === 'no-sales') list = list.filter((p) => !p.hasSalesData);
 
-    // Search
     if (!search) return list;
     const q = search.toLowerCase();
     return list.filter(
@@ -105,7 +126,8 @@ export default function Products() {
         p.name.toLowerCase().includes(q) ||
         p.brand.toLowerCase().includes(q) ||
         p.ean.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q)
+        p.sku.toLowerCase().includes(q) ||
+        p.articleNames.some((an) => an.toLowerCase().includes(q))
     );
   }, [products, search, filter]);
 
@@ -238,15 +260,18 @@ export default function Products() {
             </thead>
             <tbody>
               {filtered2.map((p) => (
-                <tr key={p.sku || p.name} className={`border-t border-bg4 hover:bg-bg/50 transition ${!p.hasSalesData ? 'opacity-50' : ''}`}>
+                <tr key={p.key} className={`border-t border-bg4 hover:bg-bg/50 transition ${!p.hasSalesData ? 'opacity-50' : ''}`}>
                   <td className="p-3 max-w-[220px]">
                     <button
-                      onClick={() => setActivePage('productdetail', p.name)}
+                      onClick={() => setActivePage('productdetail', p.articleNames[0] || p.name)}
                       className="text-accent hover:underline truncate block text-left max-w-full"
-                      title={p.name}
+                      title={p.articleNames.length > 1 ? `Bronnen: ${p.articleNames.join(', ')}` : p.name}
                     >
                       {p.name}
                     </button>
+                    {p.articleNames.length > 1 && (
+                      <span className="text-[10px] text-dark/30">{p.articleNames.length} bronnen</span>
+                    )}
                   </td>
                   <td className="p-3 text-dark/40 font-mono text-xs">{p.sku}</td>
                   <td className="p-3 text-dark/40 font-mono text-xs">{p.ean}</td>

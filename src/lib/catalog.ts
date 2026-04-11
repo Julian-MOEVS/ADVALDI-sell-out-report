@@ -69,34 +69,20 @@ export function matchToCatalog(articleName: string, ean?: string, sku?: string):
  * Priority: manual link → catalog by SKU → catalog by article name → original
  */
 export function catalogDisplayName(articleName: string): string | undefined {
-  // Check manual link first
-  const linkedSku = productLinks[articleName];
-  if (linkedSku && dynamicCatalog[linkedSku]) return dynamicCatalog[linkedSku].name;
-
-  // Direct catalog lookup
-  const dyn = dynamicCatalog[articleName];
-  if (dyn) return dyn.name;
-
+  const sku = matchToCatalog(articleName);
+  if (sku && dynamicCatalog[sku]) return dynamicCatalog[sku].name;
   return undefined;
 }
 
 export function catalogEan(articleName: string): string | undefined {
-  const linkedSku = productLinks[articleName];
-  if (linkedSku && dynamicCatalog[linkedSku]) return dynamicCatalog[linkedSku].ean;
-
-  const dyn = dynamicCatalog[articleName];
-  if (dyn) return dyn.ean;
-
+  const sku = matchToCatalog(articleName);
+  if (sku && dynamicCatalog[sku]) return dynamicCatalog[sku].ean;
   return undefined;
 }
 
 export function catalogBrand(articleName: string): string | undefined {
-  const linkedSku = productLinks[articleName];
-  if (linkedSku && dynamicCatalog[linkedSku]) return dynamicCatalog[linkedSku].brand;
-
-  const dyn = dynamicCatalog[articleName];
-  if (dyn) return dyn.brand;
-
+  const sku = matchToCatalog(articleName);
+  if (sku && dynamicCatalog[sku]) return dynamicCatalog[sku].brand;
   return undefined;
 }
 
