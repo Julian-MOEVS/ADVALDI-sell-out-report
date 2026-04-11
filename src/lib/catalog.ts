@@ -1,3 +1,5 @@
+import type { CatalogEntry } from './supabase';
+
 // Product catalog mapping: article code -> {n: display name, e: EAN, b: brand}
 export const PRODUCT_CATALOG: Record<string, { n: string; e: string; b: string }> = {
   "13408": { n: "6615K/85/15 BK SCMU Microflex", e: "4003318134081", b: "ABUS" },
@@ -108,12 +110,38 @@ export const PRODUCT_CATALOG: Record<string, { n: string; e: string; b: string }
   "MVS-NAV-BIRDIE-3X": { n: "NAVEE BIRDIE 3X", e: "6975293671784", b: "NAVEE" },
 };
 
+// Dynamic catalog loaded from Supabase (set at runtime)
+let dynamicCatalog: Record<string, CatalogEntry> = {};
+
+export function setDynamicCatalog(entries: CatalogEntry[]) {
+  dynamicCatalog = {};
+  for (const entry of entries) {
+    dynamicCatalog[entry.sku] = entry;
+  }
+}
+
+export function getDynamicCatalog(): CatalogEntry[] {
+  return Object.values(dynamicCatalog);
+}
+
 export function catalogDisplayName(articleName: string): string | undefined {
+  // Dynamic catalog takes priority
+  const dyn = dynamicCatalog[articleName];
+  if (dyn) return dyn.name;
+  // Fallback to hardcoded
   const entry = PRODUCT_CATALOG[articleName];
   return entry?.n;
 }
 
 export function catalogEan(articleName: string): string | undefined {
+  const dyn = dynamicCatalog[articleName];
+  if (dyn) return dyn.ean;
   const entry = PRODUCT_CATALOG[articleName];
   return entry?.e;
+}
+
+export function catalogSku(articleName: string): string | undefined {
+  const dyn = dynamicCatalog[articleName];
+  if (dyn) return dyn.sku;
+  return PRODUCT_CATALOG[articleName] ? articleName : undefined;
 }

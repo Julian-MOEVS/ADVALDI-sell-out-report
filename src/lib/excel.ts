@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
+import type { CatalogEntry } from './supabase';
 import { stockForArticle, groupBy } from './filters';
 
 interface ColMap {
@@ -448,5 +449,54 @@ export function parseFnacVdbCsv(file: File): Promise<{ rows: DataRow[]; market: 
     };
     reader.onerror = () => reject(new Error('Bestand kon niet worden gelezen'));
     reader.readAsText(file);
+  });
+}
+
+/* ── Product Catalog parser ── */
+
+export function parseCatalogExcel(file: File): Promise<CatalogEntry[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+        if (raw.length < 2) { resolve([]); return; }
+
+        const headers = raw[0].map(String);
+        const colSku = findCol(headers, 'SUPPLIER_ORDER_NR', 'Artikelnummer', 'SKU', 'Artikelcode');
+        const colName = findCol(headers, 'PRODUCT_NAME', 'Omschrijving', 'Product', 'Naam');
+        const colEan = findCol(headers, 'GTIN_1', 'EAN', 'EAN-CODE', 'Barcode');
+        const colBrand = findCol(headers, 'LABEL', 'Merk', 'Brand', 'Manufacturer');
+
+        if (colSku < 0 || colName < 0) {
+          reject(new Error('Kolom SUPPLIER_ORDER_NR/Artikelnummer en PRODUCT_NAME/Omschrijving niet gevonden'));
+          return;
+        }
+
+        const entries: CatalogEntry[] = [];
+        for (let i = 1; i < raw.length; i++) {
+          const r = raw[i];
+          if (!r || r.length === 0) continue;
+          const sku = cleanStr(r[colSku]);
+          const name = cleanStr(r[colName]);
+          if (!sku || !name) continue;
+
+          entries.push({
+            sku,
+            name,
+            ean: colEan >= 0 ? cleanStr(r[colEan]) : '',
+            brand: colBrand >= 0 ? normalizeBrand(cleanStr(r[colBrand])) : '',
+          });
+        }
+
+        resolve(entries);
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('Bestand kon niet worden gelezen'));
+    reader.readAsArrayBuffer(file);
   });
 }

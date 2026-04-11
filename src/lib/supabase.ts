@@ -81,3 +81,75 @@ export async function deleteCombo(week: string, market: 'NL' | 'BE'): Promise<bo
   }
   return true;
 }
+
+/* ── Product Catalog ── */
+
+export interface CatalogEntry {
+  sku: string;
+  name: string;
+  ean: string;
+  brand: string;
+}
+
+const CATALOG_TABLE = 'product_catalog';
+
+/** Fetch all catalog entries */
+export async function fetchCatalog(): Promise<CatalogEntry[]> {
+  const entries: CatalogEntry[] = [];
+  let from = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from(CATALOG_TABLE)
+      .select('sku, name, ean, brand')
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Supabase catalog fetch error:', error);
+      break;
+    }
+
+    if (!data || data.length === 0) break;
+    entries.push(...(data as CatalogEntry[]));
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return entries;
+}
+
+/** Upsert catalog entries (replaces existing SKUs) */
+export async function upsertCatalog(entries: CatalogEntry[]): Promise<{ success: boolean; count: number }> {
+  const BATCH = 500;
+  let upserted = 0;
+
+  for (let i = 0; i < entries.length; i += BATCH) {
+    const batch = entries.slice(i, i + BATCH);
+    const { error } = await supabase
+      .from(CATALOG_TABLE)
+      .upsert(batch, { onConflict: 'sku' });
+
+    if (error) {
+      console.error('Supabase catalog upsert error:', error);
+      return { success: false, count: upserted };
+    }
+    upserted += batch.length;
+  }
+
+  return { success: true, count: upserted };
+}
+
+/** Delete all catalog entries */
+export async function clearCatalog(): Promise<boolean> {
+  const { error } = await supabase
+    .from(CATALOG_TABLE)
+    .delete()
+    .neq('sku', '');
+
+  if (error) {
+    console.error('Supabase catalog clear error:', error);
+    return false;
+  }
+  return true;
+}

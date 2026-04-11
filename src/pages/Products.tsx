@@ -1,9 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
-import { catalogEan } from '../lib/catalog';
+import { catalogEan, setDynamicCatalog, getDynamicCatalog } from '../lib/catalog';
+import { parseCatalogExcel } from '../lib/excel';
+import { upsertCatalog, fetchCatalog } from '../lib/supabase';
 import Sparkline from '../components/ui/Sparkline';
 import StatusBadge from '../components/ui/StatusBadge';
+import { Upload, FileSpreadsheet, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function Products() {
   const { allData, selectedWeek, selectedMarket, displayName, setActivePage } = useAppStore();
@@ -11,6 +14,9 @@ export default function Products() {
   const rows = useMemo(() => filtered(data, selectedWeek, selectedMarket), [data, selectedWeek, selectedMarket]);
 
   const [search, setSearch] = useState('');
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState('');
+  const [catalogLoading, setCatalogLoading] = useState(false);
 
   const allWeeks = weeks(data);
 
@@ -50,8 +56,86 @@ export default function Products() {
     );
   }, [products, search, displayName]);
 
+  const catalogCount = getDynamicCatalog().length;
+
+  const handleCatalogUpload = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setCatalogLoading(true);
+    setCatalogStatus('');
+
+    try {
+      let allEntries: Awaited<ReturnType<typeof parseCatalogExcel>> = [];
+      for (const file of Array.from(files)) {
+        const entries = await parseCatalogExcel(file);
+        allEntries = [...allEntries, ...entries];
+      }
+
+      if (allEntries.length === 0) {
+        setCatalogStatus('Geen producten gevonden in bestand');
+        setCatalogLoading(false);
+        return;
+      }
+
+      const result = await upsertCatalog(allEntries);
+      if (result.success) {
+        // Refresh catalog
+        const fresh = await fetchCatalog();
+        setDynamicCatalog(fresh);
+        setCatalogStatus(`${result.count} producten geüpload naar catalogus`);
+      } else {
+        setCatalogStatus(`Fout: slechts ${result.count} van ${allEntries.length} opgeslagen`);
+      }
+    } catch (err) {
+      setCatalogStatus(`Fout bij inlezen: ${err instanceof Error ? err.message : 'onbekend'}`);
+    }
+    setCatalogLoading(false);
+  }, []);
+
   return (
     <div className="space-y-4">
+      {/* Catalog upload section */}
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm overflow-hidden">
+        <button
+          onClick={() => setShowCatalog(!showCatalog)}
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-bg/50 transition"
+        >
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet size={16} className="text-accent" />
+            <span className="text-sm font-medium">Productcatalogus</span>
+            <span className="text-xs text-dark/40">({catalogCount} producten)</span>
+          </div>
+          {showCatalog ? <ChevronUp size={16} className="text-dark/40" /> : <ChevronDown size={16} className="text-dark/40" />}
+        </button>
+
+        {showCatalog && (
+          <div className="px-4 pb-4 space-y-3 border-t border-bg4">
+            <p className="text-xs text-dark/50 mt-3">
+              Upload een productcatalogus (.xlsx) om weergavenamen, EAN-codes en merken te koppelen.
+              Ondersteunde kolommen: SUPPLIER_ORDER_NR / Artikelnummer, PRODUCT_NAME / Omschrijving, GTIN_1 / EAN, LABEL / Merk.
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-accent-light to-accent text-white rounded-lg hover:opacity-90 transition text-sm cursor-pointer">
+                <Upload size={14} />
+                Catalogus uploaden
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleCatalogUpload(e.target.files)}
+                />
+              </label>
+              {catalogLoading && <span className="text-sm text-dark/50">Uploaden...</span>}
+              {catalogStatus && !catalogLoading && (
+                <span className={`text-sm ${catalogStatus.startsWith('Fout') ? 'text-danger' : 'text-success'}`}>
+                  {catalogStatus}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       <input
         type="text"
         placeholder="Zoek op artikel, merk, EAN of SKU..."

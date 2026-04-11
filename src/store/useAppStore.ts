@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
-import { catalogDisplayName } from '../lib/catalog';
-import { fetchAllRows, insertRows, deleteCombo } from '../lib/supabase';
+import { catalogDisplayName, setDynamicCatalog } from '../lib/catalog';
+import { fetchAllRows, insertRows, deleteCombo, fetchCatalog } from '../lib/supabase';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -79,7 +79,8 @@ export const useAppStore = create<AppState & AppActions>()(
   )
 );
 
-// Load data from Supabase on app start
-fetchAllRows().then((rows) => {
+// Load data and catalog from Supabase on app start
+Promise.all([fetchAllRows(), fetchCatalog()]).then(([rows, catalog]) => {
   useAppStore.setState({ userData: rows });
+  setDynamicCatalog(catalog);
 });
