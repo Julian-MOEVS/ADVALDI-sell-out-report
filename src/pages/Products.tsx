@@ -24,6 +24,7 @@ export default function Products() {
         const mfr = aRows[0].mfr;
         const pg = aRows[0].pg;
         const ean = aRows[0].ean || catalogEan(an) || '';
+        const sku = aRows[0].sku || '';
 
         // Sparkline per week
         const byWeek = groupBy(aRows, (r) => r.w);
@@ -31,7 +32,7 @@ export default function Products() {
           byWeek[w] ? byWeek[w].reduce((a, r) => a + r.s, 0) : 0
         );
 
-        return { an, mfr, pg, ean, s, k, p, weekSales };
+        return { an, mfr, pg, ean, sku, s, k, p, weekSales };
       })
       .sort((a, b) => b.s - a.s);
   }, [rows, allWeeks]);
@@ -44,6 +45,7 @@ export default function Products() {
         p.an.toLowerCase().includes(q) ||
         p.mfr.toLowerCase().includes(q) ||
         p.ean.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
         displayName(p.an).toLowerCase().includes(q)
     );
   }, [products, search, displayName]);
@@ -52,7 +54,7 @@ export default function Products() {
     <div className="space-y-4">
       <input
         type="text"
-        placeholder="Zoek op artikel, merk of EAN..."
+        placeholder="Zoek op artikel, merk, EAN of SKU..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="w-full bg-bg2 border border-bg4 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-accent"
@@ -64,6 +66,7 @@ export default function Products() {
             <thead>
               <tr className="text-left text-dark/40 text-xs uppercase bg-bg">
                 <th className="p-3">Artikel</th>
+                <th className="p-3">SKU</th>
                 <th className="p-3">EAN</th>
                 <th className="p-3">Merk</th>
                 <th className="p-3">Productgroep</th>
@@ -86,6 +89,7 @@ export default function Products() {
                       {displayName(p.an)}
                     </button>
                   </td>
+                  <td className="p-3 text-dark/40 font-mono text-xs">{p.sku}</td>
                   <td className="p-3 text-dark/40 font-mono text-xs">{p.ean}</td>
                   <td className="p-3 text-dark/50">{p.mfr}</td>
                   <td className="p-3 text-dark/50">{p.pg}</td>
@@ -98,7 +102,7 @@ export default function Products() {
               ))}
               {filtered2.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-dark/40">
+                  <td colSpan={10} className="p-8 text-center text-dark/40">
                     Geen producten gevonden
                   </td>
                 </tr>

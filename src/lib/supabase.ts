@@ -17,7 +17,7 @@ export async function fetchAllRows(): Promise<DataRow[]> {
   while (true) {
     const { data, error } = await supabase
       .from(TABLE)
-      .select('w, rg, mfr, pg, an, ean, ch, st, sl, p, s, k')
+      .select('w, rg, mfr, pg, an, ean, sku, ch, st, sl, p, s, k')
       .range(from, from + pageSize - 1);
 
     if (error) {
@@ -47,6 +47,7 @@ export async function insertRows(rows: DataRow[]): Promise<{ success: boolean; c
       pg: r.pg,
       an: r.an,
       ean: r.ean,
+      sku: r.sku || '',
       ch: r.ch,
       st: r.st,
       sl: r.sl,

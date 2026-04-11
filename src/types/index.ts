@@ -5,6 +5,7 @@ export interface DataRow {
   pg: string;
   an: string;
   ean: string;
+  sku: string;
   ch: string;
   st: string;
   sl: string;

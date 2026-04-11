@@ -109,6 +109,7 @@ export function parseExcelFile(file: File): Promise<{ rows: DataRow[]; market: '
             pg: cleanStr(r[colMap.productGroup]),
             an: cleanStr(r[colMap.articleName]),
             ean: cleanStr(r[colMap.ean]),
+            sku: '',
             ch,
             st,
             sl,
@@ -302,6 +303,7 @@ export function parseExportStatistics(
 
         if (hasOrderDetails) {
           let currentOmschr = '';
+          let currentSku = '';
           for (let i = 1; i < raw.length; i++) {
             const r = raw[i];
             if (!r || r.length === 0) continue;
@@ -309,6 +311,7 @@ export function parseExportStatistics(
             const artNr = cleanStr(r[colArtNr]);
             if (artNr) {
               currentOmschr = cleanStr(r[colOmschr]);
+              currentSku = artNr;
             }
 
             const orderNr = cleanStr(r[colOrderNr]);
@@ -324,7 +327,7 @@ export function parseExportStatistics(
 
             rows.push({
               w: week, rg: market, mfr: 'Pure Electric', pg: '',
-              an: currentOmschr, ean: '',
+              an: currentOmschr, ean: '', sku: currentSku,
               ch: channel, st: bedrijf,
               sl: bedrijf ? `${channel} / ${bedrijf}` : channel,
               p: 0, s: aantal, k: 0,
@@ -350,7 +353,7 @@ export function parseExportStatistics(
 
             rows.push({
               w: week || 'onbekend', rg: market, mfr: 'Pure Electric', pg: '',
-              an: omschr, ean: '',
+              an: omschr, ean: '', sku: artNr,
               ch: channel, st: '', sl: channel,
               p: 0, s: producten, k: 0,
             });
@@ -397,6 +400,7 @@ export function parseFnacVdbCsv(file: File): Promise<{ rows: DataRow[]; market: 
         const ci = (name: string) => headers.findIndex((h) => h.trim() === name);
         const colMarque = ci('Marque');
         const colFamily = ci('Family');
+        const colVdbCode = ci('VDBcode');
         const colArticle = ci('Article Name');
         const colEan = ci('EAN-CODE');
         const colSalesVDB = ci('Sales Qty VDB');
@@ -418,6 +422,7 @@ export function parseFnacVdbCsv(file: File): Promise<{ rows: DataRow[]; market: 
 
           const marque = (cols[colMarque] || '').trim();
           const family = (cols[colFamily] || '').trim();
+          const vdbCode = colVdbCode >= 0 ? (cols[colVdbCode] || '').trim() : '';
           const ean = (cols[colEan] || '').trim();
           const salesVDB = csvNum(cols[colSalesVDB]);
           const salesFNAC = csvNum(cols[colSalesFNAC]);
@@ -427,13 +432,13 @@ export function parseFnacVdbCsv(file: File): Promise<{ rows: DataRow[]; market: 
           // VDB row
           rows.push({
             w: week, rg: 'BE', mfr: normalizeBrand(marque), pg: family,
-            an: article, ean, ch: 'Vanden Borre', st: 'Vanden Borre',
+            an: article, ean, sku: vdbCode, ch: 'Vanden Borre', st: 'Vanden Borre',
             sl: 'Vanden Borre', p: 0, s: salesVDB, k: stockVDB,
           });
           // FNAC row
           rows.push({
             w: week, rg: 'BE', mfr: normalizeBrand(marque), pg: family,
-            an: article, ean, ch: 'FNAC', st: 'FNAC',
+            an: article, ean, sku: vdbCode, ch: 'FNAC', st: 'FNAC',
             sl: 'FNAC', p: 0, s: salesFNAC, k: stockFNAC,
           });
         }
