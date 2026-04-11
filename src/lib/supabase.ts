@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { DataRow } from '../types';
 
 const SUPABASE_URL = 'https://comqpyhbdsqifheoegjk.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_pymddvM2q7pm47IkUimHpA_IupNnvvP';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXFweWhiZHNxaWZoZW9lZ2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4MTY1MTAsImV4cCI6MjA5MTM5MjUxMH0.bQjtxnh2VMV8dfCYEZMqqVH1TmvnZTsvaHEdCAJCUZI';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
