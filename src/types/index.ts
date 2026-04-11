@@ -31,8 +31,8 @@ export interface AppState {
 }
 
 export interface AppActions {
-  addUserData: (rows: DataRow[]) => void;
-  removeUserCombo: (week: string, market: 'NL' | 'BE') => void;
+  addUserData: (rows: DataRow[]) => Promise<void> | void;
+  removeUserCombo: (week: string, market: 'NL' | 'BE') => Promise<void> | void;
   setAlias: (orig: string, alias: string) => void;
   clearAlias: (orig: string) => void;
   clearAllAliases: () => void;

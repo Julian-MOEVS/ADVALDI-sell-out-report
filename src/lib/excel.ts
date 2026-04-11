@@ -30,6 +30,16 @@ function cleanStr(v: unknown): string {
   return String(v).replace(/\.0$/, '').trim();
 }
 
+const BRAND_MAP: Record<string, string> = {
+  'pure': 'Pure Electric',
+  'purel': 'Pure Electric',
+  'pure electric': 'Pure Electric',
+};
+
+function normalizeBrand(raw: string): string {
+  return BRAND_MAP[raw.toLowerCase()] ?? raw;
+}
+
 function detectMarket(headers: string[], fileName: string): 'NL' | 'BE' {
   const hasSalesChannel = headers.some(
     (h) => normalizeHeader(h).toLowerCase() === 'sales channel'
@@ -95,7 +105,7 @@ export function parseExcelFile(file: File): Promise<{ rows: DataRow[]; market: '
           rows.push({
             w,
             rg: market,
-            mfr: cleanStr(r[colMap.manufacturer]),
+            mfr: normalizeBrand(cleanStr(r[colMap.manufacturer])),
             pg: cleanStr(r[colMap.productGroup]),
             an: cleanStr(r[colMap.articleName]),
             ean: cleanStr(r[colMap.ean]),
@@ -416,13 +426,13 @@ export function parseFnacVdbCsv(file: File): Promise<{ rows: DataRow[]; market: 
 
           // VDB row
           rows.push({
-            w: week, rg: 'BE', mfr: marque, pg: family,
+            w: week, rg: 'BE', mfr: normalizeBrand(marque), pg: family,
             an: article, ean, ch: 'Vanden Borre', st: 'Vanden Borre',
             sl: 'Vanden Borre', p: 0, s: salesVDB, k: stockVDB,
           });
           // FNAC row
           rows.push({
-            w: week, rg: 'BE', mfr: marque, pg: family,
+            w: week, rg: 'BE', mfr: normalizeBrand(marque), pg: family,
             an: article, ean, ch: 'FNAC', st: 'FNAC',
             sl: 'FNAC', p: 0, s: salesFNAC, k: stockFNAC,
           });

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
 import { catalogDisplayName } from '../lib/catalog';
+import { fetchAllRows, insertRows, deleteCombo } from '../lib/supabase';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -16,13 +17,31 @@ export const useAppStore = create<AppState & AppActions>()(
       detailId: '',
       sidebarOpen: false,
 
-      addUserData: (rows: DataRow[]) =>
-        set((s) => ({ userData: [...s.userData, ...rows] })),
+      addUserData: async (rows: DataRow[]) => {
+        // Insert into Supabase first
+        const result = await insertRows(rows);
+        if (result.success) {
+          // Refresh from Supabase to stay in sync
+          const fresh = await fetchAllRows();
+          set({ userData: fresh });
+        } else {
+          // Fallback: add locally
+          set((s) => ({ userData: [...s.userData, ...rows] }));
+        }
+      },
 
-      removeUserCombo: (week: string, market: 'NL' | 'BE') =>
-        set((s) => ({
-          userData: s.userData.filter((r) => !(r.w === week && r.rg === market)),
-        })),
+      removeUserCombo: async (week: string, market: 'NL' | 'BE') => {
+        const ok = await deleteCombo(week, market);
+        if (ok) {
+          const fresh = await fetchAllRows();
+          set({ userData: fresh });
+        } else {
+          // Fallback: remove locally
+          set((s) => ({
+            userData: s.userData.filter((r) => !(r.w === week && r.rg === market)),
+          }));
+        }
+      },
 
       setAlias: (orig: string, alias: string) =>
         set((s) => ({ aliases: { ...s.aliases, [orig]: alias } })),
@@ -51,7 +70,6 @@ export const useAppStore = create<AppState & AppActions>()(
     {
       name: 'moevs-store',
       partialize: (state) => ({
-        userData: state.userData,
         aliases: state.aliases,
         platformConfig: state.platformConfig,
         selectedWeek: state.selectedWeek,
@@ -60,3 +78,8 @@ export const useAppStore = create<AppState & AppActions>()(
     }
   )
 );
+
+// Load data from Supabase on app start
+fetchAllRows().then((rows) => {
+  useAppStore.setState({ userData: rows });
+});
