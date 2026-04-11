@@ -77,7 +77,7 @@ export default function Import() {
             result = await parseExportStatistics(file, 'Shopify', market);
             break;
           case 'brincr':
-            result = await parseExportStatistics(file, 'Brincr Portaal', market);
+            result = await parseExportStatistics(file, 'Brincr', market);
             break;
           case 'fnac_vdb':
             result = await parseFnacVdbCsv(file);

@@ -63,12 +63,18 @@ export function resolvedDisplayName(key: string, aliases: Record<string, string>
 }
 
 /**
- * Resolve a store name. Channels like "Shopify" or "Brincr Portaal"
- * are grouped by channel name instead of per-customer store names.
+ * Resolve a store name.
+ * - Shopify: grouped as "Shopify" (all orders combined)
+ * - Brincr: per partner/store (e.g. "Brincr / MOEVS Eindhoven")
+ * - Media Markt / FNAC / VDB: per store
  */
-const CHANNEL_STORES = ['shopify', 'brincr portaal'];
+const GROUPED_CHANNELS = ['shopify'];
 
 export function resolveStoreKey(r: DataRow): string {
-  if (r.ch && CHANNEL_STORES.includes(r.ch.toLowerCase())) return r.ch;
+  if (r.ch && GROUPED_CHANNELS.includes(r.ch.toLowerCase())) return r.ch;
+  // For Brincr, show channel + store name
+  if (r.ch && r.ch.toLowerCase() === 'brincr' && r.st) {
+    return `Brincr / ${r.st}`;
+  }
   return r.sl || r.st;
 }

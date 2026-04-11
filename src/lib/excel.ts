@@ -99,9 +99,10 @@ export function parseExcelFile(file: File): Promise<{ rows: DataRow[]; market: '
           const w = cleanStr(r[colMap.week]);
           if (!w) continue;
 
-          const ch = colMap.salesChannel >= 0 ? cleanStr(r[colMap.salesChannel]) : '';
+          const rawCh = colMap.salesChannel >= 0 ? cleanStr(r[colMap.salesChannel]) : '';
+          const ch = market === 'BE' ? 'MM-BE' : 'MM-NL';
           const st = cleanStr(r[colMap.store]);
-          const sl = [ch, st].filter(Boolean).join(' / ');
+          const sl = rawCh ? `${rawCh} / ${st}` : st;
 
           rows.push({
             w,
