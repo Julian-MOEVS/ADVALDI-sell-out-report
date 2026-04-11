@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
-import { catalogDisplayName, setDynamicCatalog } from '../lib/catalog';
-import { fetchAllRows, insertRows, deleteCombo, fetchCatalog } from '../lib/supabase';
+import { catalogDisplayName, setDynamicCatalog, setProductLinks } from '../lib/catalog';
+import { fetchAllRows, insertRows, deleteCombo, fetchCatalog, fetchProductLinks } from '../lib/supabase';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -18,14 +18,11 @@ export const useAppStore = create<AppState & AppActions>()(
       sidebarOpen: false,
 
       addUserData: async (rows: DataRow[]) => {
-        // Insert into Supabase first
         const result = await insertRows(rows);
         if (result.success) {
-          // Refresh from Supabase to stay in sync
           const fresh = await fetchAllRows();
           set({ userData: fresh });
         } else {
-          // Fallback: add locally
           set((s) => ({ userData: [...s.userData, ...rows] }));
         }
       },
@@ -36,7 +33,6 @@ export const useAppStore = create<AppState & AppActions>()(
           const fresh = await fetchAllRows();
           set({ userData: fresh });
         } else {
-          // Fallback: remove locally
           set((s) => ({
             userData: s.userData.filter((r) => !(r.w === week && r.rg === market)),
           }));
@@ -79,8 +75,9 @@ export const useAppStore = create<AppState & AppActions>()(
   )
 );
 
-// Load data and catalog from Supabase on app start
-Promise.all([fetchAllRows(), fetchCatalog()]).then(([rows, catalog]) => {
+// Load data, catalog, and product links from Supabase on app start
+Promise.all([fetchAllRows(), fetchCatalog(), fetchProductLinks()]).then(([rows, catalog, links]) => {
   useAppStore.setState({ userData: rows });
   setDynamicCatalog(catalog);
+  setProductLinks(links);
 });

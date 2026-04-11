@@ -153,3 +153,60 @@ export async function clearCatalog(): Promise<boolean> {
   }
   return true;
 }
+
+/* ── Product Links (sell-out article name → catalog SKU) ── */
+
+export interface ProductLink {
+  article_name: string;
+  catalog_sku: string;
+}
+
+const LINKS_TABLE = 'product_links';
+
+/** Fetch all product links */
+export async function fetchProductLinks(): Promise<ProductLink[]> {
+  const links: ProductLink[] = [];
+  let from = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from(LINKS_TABLE)
+      .select('article_name, catalog_sku')
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error('Supabase links fetch error:', error);
+      break;
+    }
+
+    if (!data || data.length === 0) break;
+    links.push(...(data as ProductLink[]));
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return links;
+}
+
+/** Upsert product links */
+export async function upsertProductLinks(links: ProductLink[]): Promise<{ success: boolean; count: number }> {
+  if (links.length === 0) return { success: true, count: 0 };
+  const BATCH = 500;
+  let upserted = 0;
+
+  for (let i = 0; i < links.length; i += BATCH) {
+    const batch = links.slice(i, i + BATCH);
+    const { error } = await supabase
+      .from(LINKS_TABLE)
+      .upsert(batch, { onConflict: 'article_name' });
+
+    if (error) {
+      console.error('Supabase links upsert error:', error);
+      return { success: false, count: upserted };
+    }
+    upserted += batch.length;
+  }
+
+  return { success: true, count: upserted };
+}
