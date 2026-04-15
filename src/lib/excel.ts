@@ -165,6 +165,33 @@ function retailerAndChannel(r: DataRow): { retailer: string; channel: RefChannel
   return { retailer: ch || r.st || '—', channel: 'Online' };
 }
 
+/** Per-retailer bucket key used for the separate per-company sheets. */
+function retailerBucket(r: DataRow): string {
+  const ch = r.ch || '';
+  if (ch === 'MM-NL') return 'Media Markt NL';
+  if (ch === 'MM-BE') return 'Media Markt BE';
+  if (ch === 'Vanden Borre') return 'Vanden Borre';
+  if (ch === 'FNAC') return 'FNAC';
+  if (ch === 'Shopify') return 'Shopify';
+  if (ch === 'Brincr') return `Brincr - ${r.st || 'Onbekend'}`;
+  return ch || r.st || 'Overig';
+}
+
+/** Sanitize a string so it can be used as an Excel sheet name. */
+function sheetSafeName(name: string, used: Set<string>): string {
+  let s = name.replace(/[\\/?*[\]:]/g, '-').trim();
+  if (s.length > 31) s = s.slice(0, 31);
+  if (!s) s = 'Sheet';
+  let candidate = s;
+  let i = 2;
+  while (used.has(candidate.toLowerCase())) {
+    const suffix = ` (${i++})`;
+    candidate = s.slice(0, 31 - suffix.length) + suffix;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
 function countryFromMarket(rg: 'NL' | 'BE'): string {
   return rg === 'BE' ? 'Belgium' : 'Netherlands';
 }
@@ -270,6 +297,65 @@ export function exportWeekExcel(
 
   autoWidth(ws, data);
   XLSX.utils.book_append_sheet(wb, ws, 'SELL OUT');
+
+  // ── Per-bedrijf sheets: één tab per retailer met producten × verkopen × voorraad ──
+  const usedSheetNames = new Set<string>(['sell out']);
+  const byRetailer: Record<string, DataRow[]> = {};
+  for (const r of rows) {
+    const bucket = retailerBucket(r);
+    (byRetailer[bucket] ||= []).push(r);
+  }
+
+  const retailerOrder = Object.keys(byRetailer).sort((a, b) => {
+    // Stable preferred order: MM NL, MM BE, Vanden Borre, FNAC, Shopify, then Brincr partners alphabetical.
+    const rank = (name: string) => {
+      if (name === 'Media Markt NL') return 0;
+      if (name === 'Media Markt BE') return 1;
+      if (name === 'Vanden Borre') return 2;
+      if (name === 'FNAC') return 3;
+      if (name === 'Shopify') return 4;
+      if (name.startsWith('Brincr')) return 5;
+      return 6;
+    };
+    const ra = rank(a); const rb = rank(b);
+    return ra !== rb ? ra - rb : a.localeCompare(b);
+  });
+
+  for (const retailer of retailerOrder) {
+    const retailerRows = byRetailer[retailer];
+    const productGroups = groupBy(retailerRows, resolveProductKey);
+
+    const sheetData: (string | number)[][] = [
+      [retailer],
+      [`Week ${week}`],
+      [],
+      ['SKU', 'Product', 'EAN', 'Merk', 'Verkopen', 'Voorraad', 'Inkopen'],
+    ];
+
+    const productEntries = Object.entries(productGroups)
+      .map(([key, grp]) => {
+        const s = grp.reduce((a, r) => a + r.s, 0);
+        const p = grp.reduce((a, r) => a + r.p, 0);
+        const k = stockForArticle(grp);
+        const first = grp[0];
+        const name = resolvedDisplayName(key, aliases);
+        return { key, name, ean: first.ean || '', mfr: first.mfr || '', s, p, k };
+      })
+      .sort((a, b) => b.s - a.s);
+
+    let totalS = 0, totalP = 0, totalK = 0;
+    for (const p of productEntries) {
+      sheetData.push([p.key, p.name, p.ean, p.mfr, p.s, p.k, p.p]);
+      totalS += p.s; totalP += p.p; totalK += p.k;
+    }
+    sheetData.push([]);
+    sheetData.push(['', 'TOTAAL', '', '', totalS, totalK, totalP]);
+
+    const wsR = XLSX.utils.aoa_to_sheet(sheetData);
+    autoWidth(wsR, sheetData);
+    XLSX.utils.book_append_sheet(wb, wsR, sheetSafeName(retailer, usedSheetNames));
+  }
+
   XLSX.writeFile(wb, `Sell Out Report Pure x ADVALDI (${formatExportDate()}).xlsx`);
 }
 
