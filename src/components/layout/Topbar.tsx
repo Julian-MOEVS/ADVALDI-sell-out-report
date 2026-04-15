@@ -37,7 +37,7 @@ export default function Topbar() {
           onChange={(e) => setSelectedMarket(e.target.value as 'all' | 'NL' | 'BE')}
           className="bg-bg border border-bg4 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:border-accent font-light"
         >
-          <option value="all">Alle markten</option>
+          <option value="all">Benelux</option>
           <option value="NL">Nederland</option>
           <option value="BE">België/Luxemburg</option>
         </select>

@@ -12,7 +12,7 @@ export default function MarketPill({ market }: Props) {
           : 'bg-be-amber/10 text-be-amber'
       }`}
     >
-      {isNL ? 'NL' : 'BE/LU'}
+      {isNL ? 'Nederland' : 'België/Luxemburg'}
     </span>
   );
 }

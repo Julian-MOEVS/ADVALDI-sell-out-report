@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
 import type { CatalogEntry } from './supabase';
-import { stockForArticle, groupBy, resolveProductKey, resolvedDisplayName, resolveStoreKey } from './filters';
+import { stockForArticle, groupBy, resolveProductKey, resolvedDisplayName } from './filters';
 
 interface ColMap {
   week: number;
@@ -131,58 +131,121 @@ export function parseExcelFile(file: File): Promise<{ rows: DataRow[]; market: '
   });
 }
 
+/** Returns Sunday (end of ISO week) for a week string like "202446". */
+function isoWeekEnd(week: string): Date | null {
+  if (!/^\d{6}$/.test(week)) return null;
+  const year = parseInt(week.slice(0, 4));
+  const wk = parseInt(week.slice(4, 6));
+  // ISO week 1 contains Jan 4. Compute Monday of week 1, then add (wk-1)*7 + 6 days for Sunday.
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7; // 1..7
+  const mondayW1 = new Date(jan4);
+  mondayW1.setUTCDate(jan4.getUTCDate() - (jan4Day - 1));
+  const sunday = new Date(mondayW1);
+  sunday.setUTCDate(mondayW1.getUTCDate() + (wk - 1) * 7 + 6);
+  return sunday;
+}
+
+/** JS Date → Excel date serial (1900 epoch, with leap-year bug). */
+function toExcelSerial(d: Date): number {
+  const epoch = Date.UTC(1899, 11, 30); // 1899-12-30
+  return Math.floor((d.getTime() - epoch) / 86400000);
+}
+
+/** Derive the retailer / channel pair from a DataRow. */
+function retailerAndChannel(r: DataRow): { retailer: string; channel: 'Big Box' | 'Online' } {
+  const ch = r.ch || '';
+  if (ch.startsWith('MM-')) return { retailer: 'Media Markt', channel: 'Big Box' };
+  if (ch === 'Vanden Borre') return { retailer: 'Vanden Borre', channel: 'Big Box' };
+  if (ch === 'FNAC') return { retailer: 'FNAC', channel: 'Big Box' };
+  if (ch === 'Shopify') return { retailer: 'Shopify', channel: 'Online' };
+  if (ch === 'Brincr') return { retailer: r.st || 'Brincr', channel: 'Online' };
+  return { retailer: ch || r.st || '—', channel: 'Online' };
+}
+
+function countryFromMarket(rg: 'NL' | 'BE'): string {
+  return rg === 'BE' ? 'Belgium' : 'Netherlands';
+}
+
 export function exportWeekExcel(
   week: string,
   market: string,
   rows: DataRow[],
-  prevRows: DataRow[],
+  _prevRows: DataRow[],
   aliases: Record<string, string>
 ): void {
-  const prevByProduct = groupBy(prevRows, resolveProductKey);
+  const weekEnd = isoWeekEnd(week);
+  const weekEndSerial = weekEnd ? toExcelSerial(weekEnd) : '';
 
-  const prodData: (string | number)[][] = [
-    ['Week', 'Markt', 'Merk', 'SKU', 'Weergavenaam', 'Productgroep', 'EAN', 'Verkopen', 'Delta vorige week', 'Voorraad', 'Inkopen'],
-  ];
-
-  const productGroups = groupBy(rows, resolveProductKey);
-  for (const [key, articleRows] of Object.entries(productGroups)) {
-    const s = articleRows.reduce((a, r) => a + r.s, 0);
-    const k = stockForArticle(articleRows);
-    const p = articleRows.reduce((a, r) => a + r.p, 0);
-    const prev = prevByProduct[key];
-    const prevS = prev ? prev.reduce((a, r) => a + r.s, 0) : 0;
-    const delta = prev ? s - prevS : 0;
-    const first = articleRows[0];
-    const name = resolvedDisplayName(key, aliases);
-    prodData.push([
-      week, market, first.mfr, key, name, first.pg, first.ean,
-      s, delta, k, p,
-    ]);
+  // Group by (product × retailer × channel × country) so the output matches the reference layout.
+  const groups: Record<string, DataRow[]> = {};
+  for (const r of rows) {
+    const { retailer, channel } = retailerAndChannel(r);
+    const country = countryFromMarket(r.rg);
+    const productKey = resolveProductKey(r);
+    const key = `${country}||${productKey}||${retailer}||${channel}`;
+    (groups[key] ||= []).push(r);
   }
 
-  const storeGroups = groupBy(rows, resolveStoreKey);
-  const storeData: (string | number)[][] = [
-    ['Week', 'Markt', 'Winkel', 'Verkopen', 'Voorraad'],
+  const header1 = [
+    'Country', 'Distributor', 'Product', 'Retailer Name', 'Channel', 'Week Ending',
+    'Week Sell Out Online', 'Week Sell Out', 'Total Week Retailer Sell Out',
+    'Total Week Sell In', 'Total Returns', 'Total Retailer Inventory',
   ];
-  for (const [store, storeRows] of Object.entries(storeGroups)) {
-    storeData.push([
-      week, market, store,
-      storeRows.reduce((a, r) => a + r.s, 0),
-      storeRows.reduce((a, r) => a + r.k, 0),
+  const header2 = [
+    '', '', '', '', '', '',
+    '', '(In Store)', '',
+    '(Distie to Retailer)', '', '',
+  ];
+
+  const data: (string | number)[][] = [header1, header2];
+
+  const sortedKeys = Object.keys(groups).sort();
+  for (const key of sortedKeys) {
+    const [country, productKey, retailer, channel] = key.split('||');
+    const grp = groups[key];
+    const s = grp.reduce((a, r) => a + r.s, 0);
+    const p = grp.reduce((a, r) => a + r.p, 0);
+    const k = stockForArticle(grp);
+    const name = resolvedDisplayName(productKey, aliases);
+
+    const sellOutOnline = channel === 'Online' ? s : '';
+    const sellOutInStore = channel === 'Big Box' ? s : '';
+
+    data.push([
+      country,
+      'ADVALDI',
+      name,
+      retailer,
+      channel,
+      weekEndSerial,
+      sellOutOnline,
+      sellOutInStore,
+      s,
+      p || '',
+      '',
+      k || '',
     ]);
   }
 
   const wb = XLSX.utils.book_new();
-  const ws1 = XLSX.utils.aoa_to_sheet(prodData);
-  const ws2 = XLSX.utils.aoa_to_sheet(storeData);
+  const ws = XLSX.utils.aoa_to_sheet(data);
 
-  autoWidth(ws1, prodData);
-  autoWidth(ws2, storeData);
+  // Format Week Ending column (F) as short date.
+  for (let r = 2; r < data.length; r++) {
+    const cellRef = XLSX.utils.encode_cell({ r, c: 5 });
+    const cell = ws[cellRef];
+    if (cell && typeof cell.v === 'number') {
+      cell.t = 'n';
+      cell.z = 'm/d/yyyy';
+    }
+  }
 
-  XLSX.utils.book_append_sheet(wb, ws1, 'Producten');
-  XLSX.utils.book_append_sheet(wb, ws2, 'Winkels');
+  autoWidth(ws, data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Sell-out');
   XLSX.writeFile(wb, `ADVALDI_Week_${week}_${market}.xlsx`);
 }
+
 
 export function exportBrandExcel(
   week: string,
