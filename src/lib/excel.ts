@@ -152,14 +152,16 @@ function toExcelSerial(d: Date): number {
   return Math.floor((d.getTime() - epoch) / 86400000);
 }
 
+type RefChannel = 'Big Box' | 'Independent' | 'Online' | 'B2B' | 'D2C - Pure';
+
 /** Derive the retailer / channel pair from a DataRow. */
-function retailerAndChannel(r: DataRow): { retailer: string; channel: 'Big Box' | 'Online' } {
+function retailerAndChannel(r: DataRow): { retailer: string; channel: RefChannel } {
   const ch = r.ch || '';
   if (ch.startsWith('MM-')) return { retailer: 'Media Markt', channel: 'Big Box' };
   if (ch === 'Vanden Borre') return { retailer: 'Vanden Borre', channel: 'Big Box' };
   if (ch === 'FNAC') return { retailer: 'FNAC', channel: 'Big Box' };
   if (ch === 'Shopify') return { retailer: 'Shopify', channel: 'Online' };
-  if (ch === 'Brincr') return { retailer: r.st || 'Brincr', channel: 'Online' };
+  if (ch === 'Brincr') return { retailer: r.st || 'Brincr', channel: 'Independent' };
   return { retailer: ch || r.st || '—', channel: 'Online' };
 }
 
@@ -169,7 +171,7 @@ function countryFromMarket(rg: 'NL' | 'BE'): string {
 
 export function exportWeekExcel(
   week: string,
-  market: string,
+  _market: string,
   rows: DataRow[],
   _prevRows: DataRow[],
   aliases: Record<string, string>
@@ -187,18 +189,34 @@ export function exportWeekExcel(
     (groups[key] ||= []).push(r);
   }
 
-  const header1 = [
-    'Country', 'Distributor', 'Product', 'Retailer Name', 'Channel', 'Week Ending',
-    'Week Sell Out Online', 'Week Sell Out', 'Total Week Retailer Sell Out',
-    'Total Week Sell In', 'Total Returns', 'Total Retailer Inventory',
+  // Reference layout: column A stays empty, data starts in column B.
+  // Row 1: title + instruction
+  // Row 3: group header "Sell Out" above the sell-out columns
+  // Row 4: column headers (with embedded \r\n for multi-line labels)
+  const TITLE_ROW: (string | number)[] = [
+    '', '', 'Sell Out Reporting', '', '', '', '', '', '', '', '',
+    'If online/instore sales split not possible, please complete Total Week', '',
   ];
-  const header2 = [
-    '', '', '', '', '', '',
-    '', '(In Store)', '',
-    '(Distie to Retailer)', '', '',
+  const GROUP_ROW: (string | number)[] = [
+    '', '', '', '', '', '', '', 'Sell Out', '', '', '', '', '',
+  ];
+  const HEADER_ROW: (string | number)[] = [
+    '',
+    'Country', 'Distributor', 'Product', 'Retailer Name', 'Channel', 'Week Ending',
+    'Week Sell Out Online',
+    'Week Sell Out\r\nIn Store',
+    'Total Week Retailer Sell Out',
+    'Total Week Sell In\r\n(Distie to Retailer)',
+    'Total Returns',
+    'Total Retailer Inventory',
   ];
 
-  const data: (string | number)[][] = [header1, header2];
+  const data: (string | number)[][] = [
+    TITLE_ROW,
+    ['', '', '', '', '', '', '', '', '', '', '', '', ''],
+    GROUP_ROW,
+    HEADER_ROW,
+  ];
 
   const sortedKeys = Object.keys(groups).sort();
   for (const key of sortedKeys) {
@@ -209,31 +227,31 @@ export function exportWeekExcel(
     const k = stockForArticle(grp);
     const name = resolvedDisplayName(productKey, aliases);
 
-    const sellOutOnline = channel === 'Online' ? s : '';
-    const sellOutInStore = channel === 'Big Box' ? s : '';
-
+    // Reference fills only "Total Week Retailer Sell Out" (Online/In Store columns stay blank
+    // unless the retailer reports the split explicitly — which our sources do not).
     data.push([
+      '',
       country,
       'ADVALDI',
       name,
       retailer,
       channel,
       weekEndSerial,
-      sellOutOnline,
-      sellOutInStore,
-      s,
-      p || '',
-      '',
-      k || '',
+      '',            // Week Sell Out Online
+      '',            // Week Sell Out In Store
+      s,             // Total Week Retailer Sell Out
+      p || '',       // Total Week Sell In (Distie to Retailer)
+      '',            // Total Returns
+      k || '',       // Total Retailer Inventory
     ]);
   }
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(data);
 
-  // Format Week Ending column (F) as short date.
-  for (let r = 2; r < data.length; r++) {
-    const cellRef = XLSX.utils.encode_cell({ r, c: 5 });
+  // Format Week Ending column (col G = index 6) as short date for every data row.
+  for (let r = 4; r < data.length; r++) {
+    const cellRef = XLSX.utils.encode_cell({ r, c: 6 });
     const cell = ws[cellRef];
     if (cell && typeof cell.v === 'number') {
       cell.t = 'n';
@@ -241,9 +259,26 @@ export function exportWeekExcel(
     }
   }
 
+  // Wrap text in the header row so \r\n shows as real line breaks.
+  for (let c = 0; c < HEADER_ROW.length; c++) {
+    const cellRef = XLSX.utils.encode_cell({ r: 3, c });
+    const cell = ws[cellRef];
+    if (cell) {
+      cell.s = { ...(cell.s || {}), alignment: { wrapText: true, vertical: 'center' } };
+    }
+  }
+
   autoWidth(ws, data);
-  XLSX.utils.book_append_sheet(wb, ws, 'Sell-out');
-  XLSX.writeFile(wb, `ADVALDI_Week_${week}_${market}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, 'SELL OUT');
+  XLSX.writeFile(wb, `Sell Out Report Pure x ADVALDI (${formatExportDate()}).xlsx`);
+}
+
+function formatExportDate(): string {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 
