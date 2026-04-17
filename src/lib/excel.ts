@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
 import type { CatalogEntry } from './supabase';
-import { stockForArticle, groupBy, resolveProductKey, resolvedDisplayName } from './filters';
+import { stockForArticle, resolveProductKey, resolvedDisplayName } from './filters';
 
 interface ColMap {
   week: number;
