@@ -152,29 +152,31 @@ function toExcelSerial(d: Date): number {
   return Math.floor((d.getTime() - epoch) / 86400000);
 }
 
-type RefChannel = 'Big Box' | 'Independent' | 'Online' | 'B2B' | 'D2C - Pure';
+type RefChannel = 'Big Box' | 'Independent ' | 'Online' | 'B2B' | 'D2C - Pure';
+type SellOutKind = 'total' | 'online' | 'instore';
 
-/** Derive the retailer / channel pair from a DataRow. */
-function retailerAndChannel(r: DataRow): { retailer: string; channel: RefChannel } {
+/** Derive retailer name, channel, country and sell-out split for the Pure template. */
+function retailerAndChannel(r: DataRow): {
+  retailer: string;
+  channel: RefChannel;
+  country: string;
+  kind: SellOutKind;
+} {
   const ch = r.ch || '';
-  if (ch.startsWith('MM-')) return { retailer: 'Media Markt', channel: 'Big Box' };
-  if (ch === 'Vanden Borre') return { retailer: 'Vanden Borre', channel: 'Big Box' };
-  if (ch === 'FNAC') return { retailer: 'FNAC', channel: 'Big Box' };
-  if (ch === 'Shopify') return { retailer: 'Shopify', channel: 'Online' };
-  if (ch === 'Brincr') return { retailer: r.st || 'Brincr', channel: 'Independent' };
-  return { retailer: ch || r.st || '—', channel: 'Online' };
+  const country = countryFromMarket(r.rg);
+
+  if (ch === 'MM-NL') return { retailer: 'MediaMarkt Netherlands', channel: 'Big Box', country: 'Netherlands', kind: 'total' };
+  if (ch === 'MM-BE') return { retailer: 'MediaMarkt Belgium', channel: 'Big Box', country: 'Belgium', kind: 'total' };
+  if (ch === 'Vanden Borre') return { retailer: 'Vanden Borre', channel: 'Big Box', country: 'Belgium', kind: 'total' };
+  if (ch === 'FNAC') return { retailer: 'FNAC', channel: 'Big Box', country: 'Belgium', kind: 'total' };
+  if (ch === 'Shopify') return { retailer: 'Shopify', channel: 'D2C - Pure', country, kind: 'online' };
+  if (ch === 'Brincr') return { retailer: r.st || 'Independent', channel: 'Independent ', country, kind: 'instore' };
+  return { retailer: ch || r.st || '—', channel: 'Online', country, kind: 'total' };
 }
 
 /** Per-retailer bucket key used for the separate per-company sheets. */
 function retailerBucket(r: DataRow): string {
-  const ch = r.ch || '';
-  if (ch === 'MM-NL') return 'Media Markt NL';
-  if (ch === 'MM-BE') return 'Media Markt BE';
-  if (ch === 'Vanden Borre') return 'Vanden Borre';
-  if (ch === 'FNAC') return 'FNAC';
-  if (ch === 'Shopify') return 'Shopify';
-  if (ch === 'Brincr') return `Brincr - ${r.st || 'Onbekend'}`;
-  return ch || r.st || 'Overig';
+  return retailerAndChannel(r).retailer;
 }
 
 /** Sanitize a string so it can be used as an Excel sheet name. */
@@ -206,14 +208,14 @@ export function exportWeekExcel(
   const weekEnd = isoWeekEnd(week);
   const weekEndSerial = weekEnd ? toExcelSerial(weekEnd) : '';
 
-  // Group by (product × retailer × channel × country) so the output matches the reference layout.
-  const groups: Record<string, DataRow[]> = {};
+  // Group by (product × retailer × channel × country × kind) so the output matches the Pure template.
+  const groups: Record<string, { rows: DataRow[]; meta: ReturnType<typeof retailerAndChannel> }> = {};
   for (const r of rows) {
-    const { retailer, channel } = retailerAndChannel(r);
-    const country = countryFromMarket(r.rg);
+    const meta = retailerAndChannel(r);
     const productKey = resolveProductKey(r);
-    const key = `${country}||${productKey}||${retailer}||${channel}`;
-    (groups[key] ||= []).push(r);
+    const key = `${meta.country}||${productKey}||${meta.retailer}||${meta.channel}`;
+    if (!groups[key]) groups[key] = { rows: [], meta };
+    groups[key].rows.push(r);
   }
 
   // Reference layout: column A stays empty, data starts in column B.
@@ -245,31 +247,56 @@ export function exportWeekExcel(
     HEADER_ROW,
   ];
 
-  const sortedKeys = Object.keys(groups).sort();
+  // Retailer ordering matches the Pure template: VDB → FNAC → MediaMarkt NL → MM LU → MM BE → Shopify → Independent partners.
+  const retailerRank = (r: string): number => {
+    if (r === 'Vanden Borre') return 0;
+    if (r === 'FNAC') return 1;
+    if (r === 'MediaMarkt Netherlands') return 2;
+    if (r === 'MediaMarkt Luxembourg') return 3;
+    if (r === 'MediaMarkt Belgium') return 4;
+    if (r === 'Shopify') return 5;
+    return 6;
+  };
+
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    const ma = groups[a].meta;
+    const mb = groups[b].meta;
+    const ra = retailerRank(ma.retailer);
+    const rb = retailerRank(mb.retailer);
+    if (ra !== rb) return ra - rb;
+    if (ma.retailer !== mb.retailer) return ma.retailer.localeCompare(mb.retailer);
+    return a.localeCompare(b);
+  });
+
   for (const key of sortedKeys) {
-    const [country, productKey, retailer, channel] = key.split('||');
-    const grp = groups[key];
+    const [, productKey] = key.split('||');
+    const { rows: grp, meta } = groups[key];
     const s = grp.reduce((a, r) => a + r.s, 0);
     const p = grp.reduce((a, r) => a + r.p, 0);
     const k = stockForArticle(grp);
     const name = resolvedDisplayName(productKey, aliases);
 
-    // Reference fills only "Total Week Retailer Sell Out" (Online/In Store columns stay blank
-    // unless the retailer reports the split explicitly — which our sources do not).
+    // Split sell-out per kind, matching the Pure reference:
+    //   • Big Box retailers (MM/VDB/FNAC) → only Total filled
+    //   • D2C - Pure (Shopify)           → Online + Total
+    //   • Independent (Brincr partners)  → In Store + Total
+    const online  = meta.kind === 'online'  ? s : '';
+    const inStore = meta.kind === 'instore' ? s : '';
+
     data.push([
       '',
-      country,
+      meta.country,
       'ADVALDI',
       name,
-      retailer,
-      channel,
+      meta.retailer,
+      meta.channel,
       weekEndSerial,
-      '',            // Week Sell Out Online
-      '',            // Week Sell Out In Store
-      s,             // Total Week Retailer Sell Out
-      p || '',       // Total Week Sell In (Distie to Retailer)
-      '',            // Total Returns
-      k || '',       // Total Retailer Inventory
+      online,
+      inStore,
+      s,
+      p || '',
+      '',
+      k || '',
     ]);
   }
 
@@ -307,14 +334,14 @@ export function exportWeekExcel(
   }
 
   const retailerOrder = Object.keys(byRetailer).sort((a, b) => {
-    // Stable preferred order: MM NL, MM BE, Vanden Borre, FNAC, Shopify, then Brincr partners alphabetical.
+    // Same order as the main SELL OUT sheet, with Independent partners alphabetical at the bottom.
     const rank = (name: string) => {
-      if (name === 'Media Markt NL') return 0;
-      if (name === 'Media Markt BE') return 1;
-      if (name === 'Vanden Borre') return 2;
-      if (name === 'FNAC') return 3;
-      if (name === 'Shopify') return 4;
-      if (name.startsWith('Brincr')) return 5;
+      if (name === 'Vanden Borre') return 0;
+      if (name === 'FNAC') return 1;
+      if (name === 'MediaMarkt Netherlands') return 2;
+      if (name === 'MediaMarkt Luxembourg') return 3;
+      if (name === 'MediaMarkt Belgium') return 4;
+      if (name === 'Shopify') return 5;
       return 6;
     };
     const ra = rank(a); const rb = rank(b);
