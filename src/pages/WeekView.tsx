@@ -149,13 +149,6 @@ export default function WeekView() {
         <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium text-dark/60">Top producten</h3>
-            <button
-              onClick={() => exportWeekExcel(activeWeek, marketLabel, rows, prevRows, aliases)}
-              className="flex items-center gap-1 text-xs text-accent hover:text-accent/80"
-              title="Exporteert één Excel-bestand in Pure x ADVALDI format met per merk een tabblad"
-            >
-              <Download size={14} /> Export Sell Out Report
-            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -222,6 +215,13 @@ export default function WeekView() {
       <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-dark/60">Merk-breakdown</h3>
+          <button
+            onClick={() => exportWeekExcel(activeWeek, marketLabel, rows, prevRows, aliases)}
+            className="flex items-center gap-1 text-xs text-accent hover:text-accent/80"
+            title="Exporteert één Excel-bestand in Pure x ADVALDI format met per merk een tabblad"
+          >
+            <Download size={14} /> Export Sell Out Report
+          </button>
         </div>
         {brandGroups.map((bg) => (
           <details key={bg.brand} open={bg.sales > 0} className="mb-2">
