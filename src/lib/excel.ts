@@ -355,43 +355,17 @@ function formatExportDate(): string {
 }
 
 
+/**
+ * Kept for backwards compatibility: both export buttons now produce the same
+ * Pure x ADVALDI file (één tab per merk in sell-out format).
+ */
 export function exportBrandExcel(
   week: string,
   market: string,
   rows: DataRow[],
   aliases: Record<string, string>
 ): void {
-  const brandGroups = groupBy(rows, (r) => r.mfr);
-  const allRows: (string | number)[][] = [
-    ['Merk', 'SKU', 'Weergavenaam', 'EAN', 'Verkopen', 'Voorraad', 'Inkopen'],
-  ];
-
-  for (const [brand, brandRows] of Object.entries(brandGroups)) {
-    const productGroups = groupBy(brandRows, resolveProductKey);
-    let totalS = 0;
-    let totalK = 0;
-    let totalP = 0;
-
-    for (const [key, articleRows] of Object.entries(productGroups)) {
-      const s = articleRows.reduce((a, r) => a + r.s, 0);
-      const k = stockForArticle(articleRows);
-      const p = articleRows.reduce((a, r) => a + r.p, 0);
-      totalS += s;
-      totalK += k;
-      totalP += p;
-      const name = resolvedDisplayName(key, aliases);
-      allRows.push([brand, key, name, articleRows[0].ean, s, k, p]);
-    }
-
-    allRows.push([`TOTAAL ${brand}`, '', '', '', totalS, totalK, totalP]);
-    allRows.push(['', '', '', '', '', '', '']);
-  }
-
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(allRows);
-  autoWidth(ws, allRows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Per merk');
-  XLSX.writeFile(wb, `ADVALDI_Merken_${week}_${market}.xlsx`);
+  exportWeekExcel(week, market, rows, [], aliases);
 }
 
 function autoWidth(ws: XLSX.WorkSheet, data: (string | number)[][]) {

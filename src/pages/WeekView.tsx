@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, sum, groupBy, stockForArticle, resolveProductKey, resolvedDisplayName, resolveStoreKey } from '../lib/filters';
-import { exportWeekExcel, exportBrandExcel } from '../lib/excel';
+import { exportWeekExcel } from '../lib/excel';
 import StatCard from '../components/ui/StatCard';
 import MarketPill from '../components/ui/MarketPill';
 import { ShoppingCart, Package, TrendingUp, Store, Download } from 'lucide-react';
@@ -152,8 +152,9 @@ export default function WeekView() {
             <button
               onClick={() => exportWeekExcel(activeWeek, marketLabel, rows, prevRows, aliases)}
               className="flex items-center gap-1 text-xs text-accent hover:text-accent/80"
+              title="Exporteert één Excel-bestand in Pure x ADVALDI format met per merk een tabblad"
             >
-              <Download size={14} /> Excel
+              <Download size={14} /> Export Sell Out Report
             </button>
           </div>
           <div className="overflow-x-auto">
@@ -221,12 +222,6 @@ export default function WeekView() {
       <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-dark/60">Merk-breakdown</h3>
-          <button
-            onClick={() => exportBrandExcel(activeWeek, marketLabel, rows, aliases)}
-            className="flex items-center gap-1 text-xs text-accent hover:text-accent/80"
-          >
-            <Download size={14} /> Excel per merk
-          </button>
         </div>
         {brandGroups.map((bg) => (
           <details key={bg.brand} open={bg.sales > 0} className="mb-2">
