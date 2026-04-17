@@ -174,11 +174,6 @@ function retailerAndChannel(r: DataRow): {
   return { retailer: ch || r.st || '—', channel: 'Online', country, kind: 'total' };
 }
 
-/** Per-retailer bucket key used for the separate per-company sheets. */
-function retailerBucket(r: DataRow): string {
-  return retailerAndChannel(r).retailer;
-}
-
 /** Sanitize a string so it can be used as an Excel sheet name. */
 function sheetSafeName(name: string, used: Set<string>): string {
   let s = name.replace(/[\\/?*[\]:]/g, '-').trim();
@@ -198,17 +193,12 @@ function countryFromMarket(rg: 'NL' | 'BE'): string {
   return rg === 'BE' ? 'Belgium' : 'Netherlands';
 }
 
-export function exportWeekExcel(
-  week: string,
-  _market: string,
+/** Build a SELL-OUT-format sheet (Pure x ADVALDI layout) for a subset of rows. */
+function buildSellOutSheet(
   rows: DataRow[],
-  _prevRows: DataRow[],
+  weekEndSerial: number | '',
   aliases: Record<string, string>
-): void {
-  const weekEnd = isoWeekEnd(week);
-  const weekEndSerial = weekEnd ? toExcelSerial(weekEnd) : '';
-
-  // Group by (product × retailer × channel × country × kind) so the output matches the Pure template.
+): { sheet: XLSX.WorkSheet; rowCount: number } {
   const groups: Record<string, { rows: DataRow[]; meta: ReturnType<typeof retailerAndChannel> }> = {};
   for (const r of rows) {
     const meta = retailerAndChannel(r);
@@ -218,10 +208,6 @@ export function exportWeekExcel(
     groups[key].rows.push(r);
   }
 
-  // Reference layout: column A stays empty, data starts in column B.
-  // Row 1: title + instruction
-  // Row 3: group header "Sell Out" above the sell-out columns
-  // Row 4: column headers (with embedded \r\n for multi-line labels)
   const TITLE_ROW: (string | number)[] = [
     '', '', 'Sell Out Reporting', '', '', '', '', '', '', '', '',
     'If online/instore sales split not possible, please complete Total Week', '',
@@ -247,7 +233,6 @@ export function exportWeekExcel(
     HEADER_ROW,
   ];
 
-  // Retailer ordering matches the Pure template: VDB → FNAC → MediaMarkt NL → MM LU → MM BE → Shopify → Independent partners.
   const retailerRank = (r: string): number => {
     if (r === 'Vanden Borre') return 0;
     if (r === 'FNAC') return 1;
@@ -276,10 +261,6 @@ export function exportWeekExcel(
     const k = stockForArticle(grp);
     const name = resolvedDisplayName(productKey, aliases);
 
-    // Split sell-out per kind, matching the Pure reference:
-    //   • Big Box retailers (MM/VDB/FNAC) → only Total filled
-    //   • D2C - Pure (Shopify)           → Online + Total
-    //   • Independent (Brincr partners)  → In Store + Total
     const online  = meta.kind === 'online'  ? s : '';
     const inStore = meta.kind === 'instore' ? s : '';
 
@@ -300,10 +281,8 @@ export function exportWeekExcel(
     ]);
   }
 
-  const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(data);
 
-  // Format Week Ending column (col G = index 6) as short date for every data row.
   for (let r = 4; r < data.length; r++) {
     const cellRef = XLSX.utils.encode_cell({ r, c: 6 });
     const cell = ws[cellRef];
@@ -313,7 +292,6 @@ export function exportWeekExcel(
     }
   }
 
-  // Wrap text in the header row so \r\n shows as real line breaks.
   for (let c = 0; c < HEADER_ROW.length; c++) {
     const cellRef = XLSX.utils.encode_cell({ r: 3, c });
     const cell = ws[cellRef];
@@ -323,64 +301,46 @@ export function exportWeekExcel(
   }
 
   autoWidth(ws, data);
-  XLSX.utils.book_append_sheet(wb, ws, 'SELL OUT');
+  return { sheet: ws, rowCount: data.length - 4 };
+}
 
-  // ── Per-bedrijf sheets: één tab per retailer met producten × verkopen × voorraad ──
-  const usedSheetNames = new Set<string>(['sell out']);
-  const byRetailer: Record<string, DataRow[]> = {};
+export function exportWeekExcel(
+  week: string,
+  _market: string,
+  rows: DataRow[],
+  _prevRows: DataRow[],
+  aliases: Record<string, string>
+): void {
+  const weekEnd = isoWeekEnd(week);
+  const weekEndSerial = weekEnd ? toExcelSerial(weekEnd) : '';
+
+  // Group rows per brand; each brand becomes its own tab in Pure x ADVALDI format.
+  const byBrand: Record<string, DataRow[]> = {};
   for (const r of rows) {
-    const bucket = retailerBucket(r);
-    (byRetailer[bucket] ||= []).push(r);
+    const brand = r.mfr || 'Onbekend merk';
+    (byBrand[brand] ||= []).push(r);
   }
 
-  const retailerOrder = Object.keys(byRetailer).sort((a, b) => {
-    // Same order as the main SELL OUT sheet, with Independent partners alphabetical at the bottom.
-    const rank = (name: string) => {
-      if (name === 'Vanden Borre') return 0;
-      if (name === 'FNAC') return 1;
-      if (name === 'MediaMarkt Netherlands') return 2;
-      if (name === 'MediaMarkt Luxembourg') return 3;
-      if (name === 'MediaMarkt Belgium') return 4;
-      if (name === 'Shopify') return 5;
-      return 6;
-    };
-    const ra = rank(a); const rb = rank(b);
-    return ra !== rb ? ra - rb : a.localeCompare(b);
-  });
+  const brandsByVolume = Object.entries(byBrand)
+    .map(([brand, brandRows]) => ({
+      brand,
+      brandRows,
+      sales: brandRows.reduce((a, r) => a + r.s, 0),
+    }))
+    .sort((a, b) => b.sales - a.sales);
 
-  for (const retailer of retailerOrder) {
-    const retailerRows = byRetailer[retailer];
-    const productGroups = groupBy(retailerRows, resolveProductKey);
+  const wb = XLSX.utils.book_new();
+  const usedSheetNames = new Set<string>();
 
-    const sheetData: (string | number)[][] = [
-      [retailer],
-      [`Week ${week}`],
-      [],
-      ['SKU', 'Product', 'EAN', 'Merk', 'Verkopen', 'Voorraad', 'Inkopen'],
-    ];
-
-    const productEntries = Object.entries(productGroups)
-      .map(([key, grp]) => {
-        const s = grp.reduce((a, r) => a + r.s, 0);
-        const p = grp.reduce((a, r) => a + r.p, 0);
-        const k = stockForArticle(grp);
-        const first = grp[0];
-        const name = resolvedDisplayName(key, aliases);
-        return { key, name, ean: first.ean || '', mfr: first.mfr || '', s, p, k };
-      })
-      .sort((a, b) => b.s - a.s);
-
-    let totalS = 0, totalP = 0, totalK = 0;
-    for (const p of productEntries) {
-      sheetData.push([p.key, p.name, p.ean, p.mfr, p.s, p.k, p.p]);
-      totalS += p.s; totalP += p.p; totalK += p.k;
+  if (brandsByVolume.length === 0) {
+    // Fallback: empty template so the file is still valid.
+    const { sheet } = buildSellOutSheet([], weekEndSerial, aliases);
+    XLSX.utils.book_append_sheet(wb, sheet, sheetSafeName('SELL OUT', usedSheetNames));
+  } else {
+    for (const { brand, brandRows } of brandsByVolume) {
+      const { sheet } = buildSellOutSheet(brandRows, weekEndSerial, aliases);
+      XLSX.utils.book_append_sheet(wb, sheet, sheetSafeName(brand, usedSheetNames));
     }
-    sheetData.push([]);
-    sheetData.push(['', 'TOTAAL', '', '', totalS, totalK, totalP]);
-
-    const wsR = XLSX.utils.aoa_to_sheet(sheetData);
-    autoWidth(wsR, sheetData);
-    XLSX.utils.book_append_sheet(wb, wsR, sheetSafeName(retailer, usedSheetNames));
   }
 
   XLSX.writeFile(wb, `Sell Out Report Pure x ADVALDI (${formatExportDate()}).xlsx`);
