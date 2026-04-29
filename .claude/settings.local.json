@@ -24,7 +24,23 @@
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth login --hostname github.com --web)",
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo create ADVALDI-sell-out-report --public --source=. --remote=moevs --push --description \"MOEVS Agency sell-out dashboard — React + TypeScript\")",
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth refresh --hostname github.com --scopes workflow)",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(python -c \"import pandas as pd; xls = pd.ExcelFile\\(r'C:\\\\Users\\\\hetis\\\\Downloads\\\\Sell Out Report Pure x ADVALDI \\(29-04-2026\\).xlsx'\\); print\\(xls.sheet_names\\)\")",
+      "Bash(pip install *)",
+      "Bash(python -m pip install openpyxl --quiet)",
+      "Bash(python -c ' *)",
+      "Bash(cp \"/c/Users/hetis/Downloads/export_statistics_2026-04-29.xlsx\" /tmp/exp.xlsx)",
+      "Bash(node -e ' *)",
+      "Bash(cd /tmp)",
+      "Bash(cp \"/c/Users/hetis/Downloads/export_statistics_2026-04-29.xlsx\" ./exp.xlsx)",
+      "Bash(cp \"C:/Users/hetis/Downloads/export_statistics_2026-04-29.xlsx\" \"./test_exp.xlsx\")",
+      "Bash(cp \"C:/Users/hetis/Downloads/export_statistics_2026-04-29 \\(1\\).xlsx\" \"./test_exp1.xlsx\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git push *)",
+      "Bash(git reset *)"
     ]
   }
 }

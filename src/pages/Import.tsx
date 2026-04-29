@@ -26,10 +26,11 @@ interface MatchResult {
 }
 
 export default function Import() {
-  const { addUserData, setActivePage } = useAppStore();
+  const { importFiles, setActivePage } = useAppStore();
   const [importType, setImportType] = useState<ImportType>('mediamarkt');
   const [market, setMarket] = useState<'NL' | 'BE'>('NL');
   const [parsed, setParsed] = useState<DataRow[]>([]);
+  const [parsedPerFile, setParsedPerFile] = useState<{ filename: string; rows: DataRow[] }[]>([]);
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -66,8 +67,7 @@ export default function Import() {
     setLoading(true);
     const fileArr = Array.from(files);
     let allRows: DataRow[] = [];
-    let nlCount = 0;
-    let beCount = 0;
+    const perFile: { filename: string; rows: DataRow[] }[] = [];
 
     for (const file of fileArr) {
       try {
@@ -86,20 +86,17 @@ export default function Import() {
             result = await parseExcelFile(file);
         }
         allRows = [...allRows, ...result.rows];
-        if (result.market === 'NL') nlCount += result.rows.length;
-        else beCount += result.rows.length;
+        perFile.push({ filename: file.name, rows: result.rows });
       } catch (err) {
         console.error('Fout bij inlezen:', err);
       }
     }
 
     setParsed(allRows);
+    setParsedPerFile(perFile);
     setManualLinks({});
     setSearchTerms({});
-    const parts = [];
-    if (nlCount > 0) parts.push(`${nlCount} NL`);
-    if (beCount > 0) parts.push(`${beCount} BE/LU`);
-    setStatus(`${fileArr.length} bestand(en) gelezen — ${allRows.length} rijen (${parts.join(', ')})`);
+    setStatus(`${fileArr.length} bestand(en) gelezen — ${allRows.length} rijen`);
     setLoading(false);
   }, [importType, market]);
 
@@ -125,9 +122,10 @@ export default function Import() {
       setProductLinks(fresh);
     }
 
-    // Save data
-    await addUserData(parsed);
-    setParsed([]);
+    // Save data per file (with import tracking)
+    await importFiles(parsedPerFile);
+    (setParsed([]), setParsedPerFile([]));
+    setParsedPerFile([]);
     setStatus('');
     setManualLinks({});
     setSaving(false);
@@ -159,7 +157,7 @@ export default function Import() {
           {IMPORT_TYPES.map((t) => (
             <button
               key={t.key}
-              onClick={() => { setImportType(t.key); setParsed([]); setStatus(''); }}
+              onClick={() => { setImportType(t.key); (setParsed([]), setParsedPerFile([])); setStatus(''); }}
               className={`px-4 py-2 rounded-2xl text-sm transition ${
                 t.key === importType
                   ? 'bg-gradient-to-r from-accent-light to-accent text-white'
@@ -377,7 +375,7 @@ export default function Import() {
               {saving ? 'Opslaan...' : `Importeren (${matched.length + Object.keys(manualLinks).length} gekoppeld, ${unmatched.length - Object.keys(manualLinks).length} ongekoppeld)`}
             </button>
             <button
-              onClick={() => { setParsed([]); setStatus(''); setManualLinks({}); }}
+              onClick={() => { (setParsed([]), setParsedPerFile([])); setStatus(''); setManualLinks({}); }}
               className="px-4 py-2 bg-bg text-dark/60 rounded-lg hover:bg-bg4 transition"
             >
               Annuleren

@@ -1,15 +1,21 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { EMBEDDED_DATA } from '../lib/data';
 import { matchToCatalog } from '../lib/catalog';
+import { fetchImports, type ImportBatch } from '../lib/supabase';
 import ChannelPill from '../components/ui/ChannelPill';
-import { Database, Download, Trash2, RotateCcw, Search } from 'lucide-react';
+import { Database, Download, Trash2, RotateCcw, Search, FileSpreadsheet } from 'lucide-react';
 
 export default function Databeheer() {
-  const { allData, userData, aliases, platformConfig, removeUserCombo, setAlias, clearAlias, clearAllAliases } = useAppStore();
+  const { allData, userData, aliases, platformConfig, removeImport, setAlias, clearAlias, clearAllAliases } = useAppStore();
   const data = allData();
 
   const [search, setSearch] = useState('');
+  const [imports, setImports] = useState<ImportBatch[]>([]);
+
+  useEffect(() => {
+    fetchImports().then(setImports);
+  }, [userData]);
 
   // Row inspector filters
   const [rowWeek, setRowWeek] = useState<string>('all');
@@ -114,62 +120,82 @@ export default function Databeheer() {
         </button>
       </section>
 
-      {/* Section 2: Week management */}
+      {/* Section 2: Uploaded files management */}
       <section className="bg-white border border-bg4 rounded-3xl shadow-sm p-5">
-        <h3 className="text-sm font-medium text-dark/60 mb-3">Weken beheren</h3>
+        <h3 className="text-sm font-medium text-dark/60 mb-3 flex items-center gap-2">
+          <FileSpreadsheet size={16} /> Geüploade bestanden ({imports.length})
+        </h3>
+        <p className="text-xs text-dark/50 mb-3">
+          Klik op het prullenbakje om alle data van een bestand in één keer te verwijderen (cascade).
+        </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-dark/40 text-xs uppercase">
-                <th className="pb-2 pr-3">Week</th>
+                <th className="pb-2 pr-3">Bestand</th>
                 <th className="pb-2 pr-3">Kanaal</th>
-                <th className="pb-2 pr-3">Bron</th>
+                <th className="pb-2 pr-3">Weken</th>
                 <th className="pb-2 pr-3 text-right">Rijen</th>
-                <th className="pb-2 pr-3 text-right">Verkopen</th>
-                <th className="pb-2 pr-3 text-right">Voorraad</th>
+                <th className="pb-2 pr-3">Geïmporteerd</th>
                 <th className="pb-2">Actie</th>
               </tr>
             </thead>
             <tbody>
-              {combos.map((c) => (
-                <tr key={`${c.w}-${c.ch}-${c.rg}`} className="border-t border-bg4">
-                  <td className="py-2 pr-3">Week {parseInt(c.w.slice(-2))} ({c.w})</td>
-                  <td className="py-2 pr-3"><ChannelPill channel={c.ch} /></td>
-                  <td className="py-2 pr-3">
-                    <span className={`text-xs px-2 py-0.5 rounded ${
-                      c.source === 'Ingebouwd' ? 'bg-gray-600/30 text-dark/50'
-                        : c.source === 'Geïmporteerd' ? 'bg-accent/20 text-accent'
-                        : 'bg-info/20 text-info'
-                    }`}>
-                      {c.source}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-3 text-right font-mono">{c.rows}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{c.sales}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{c.stock}</td>
+              {imports.map((imp) => (
+                <tr key={imp.id} className="border-t border-bg4">
+                  <td className="py-2 pr-3 max-w-[300px] truncate" title={imp.filename}>{imp.filename}</td>
+                  <td className="py-2 pr-3"><ChannelPill channel={imp.channel || ''} /></td>
+                  <td className="py-2 pr-3 text-xs text-dark/50">{(imp.weeks || []).map((w) => `W${parseInt(w.slice(-2))}`).join(', ')}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{imp.row_count}</td>
+                  <td className="py-2 pr-3 text-xs text-dark/40">{new Date(imp.imported_at).toLocaleString('nl-NL')}</td>
                   <td className="py-2">
-                    {c.canDelete && (
-                      <button
-                        onClick={() => {
-                          if (confirm(`Weet je zeker dat je de geïmporteerde data voor week ${c.w} (${c.ch}) wilt verwijderen?`)) {
-                            removeUserCombo(c.w, c.rg);
-                          }
-                        }}
-                        className="text-danger hover:text-danger/80 transition"
-                        title="Verwijder geïmporteerde data"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => {
+                        if (confirm(`"${imp.filename}" en alle bijbehorende ${imp.row_count} rijen verwijderen?`)) {
+                          removeImport(imp.id).then(() => fetchImports().then(setImports));
+                        }
+                      }}
+                      className="text-danger hover:text-danger/80 transition"
+                      title="Bestand + data verwijderen"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </td>
                 </tr>
               ))}
-              {combos.length === 0 && (
-                <tr><td colSpan={7} className="py-6 text-center text-dark/40">Geen data beschikbaar</td></tr>
+              {imports.length === 0 && (
+                <tr><td colSpan={6} className="py-6 text-center text-dark/40">Nog geen bestanden geüpload</td></tr>
               )}
             </tbody>
           </table>
         </div>
+        {combos.length > imports.length && (
+          <details className="mt-4">
+            <summary className="text-xs text-dark/40 cursor-pointer">Legacy data zonder upload-tracking ({combos.length - imports.length} groepen)</summary>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-dark/40 text-xs uppercase">
+                    <th className="pb-2 pr-3">Week</th>
+                    <th className="pb-2 pr-3">Kanaal</th>
+                    <th className="pb-2 pr-3 text-right">Rijen</th>
+                    <th className="pb-2 pr-3 text-right">Verkopen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {combos.map((c) => (
+                    <tr key={`${c.w}-${c.ch}-${c.rg}`} className="border-t border-bg4">
+                      <td className="py-2 pr-3">W{parseInt(c.w.slice(-2))} ({c.w})</td>
+                      <td className="py-2 pr-3"><ChannelPill channel={c.ch} /></td>
+                      <td className="py-2 pr-3 text-right font-mono">{c.rows}</td>
+                      <td className="py-2 pr-3 text-right font-mono">{c.sales}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
       </section>
 
       {/* Section 2b: Row inspector */}

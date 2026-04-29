@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
 import { catalogDisplayName, setDynamicCatalog, setProductLinks } from '../lib/catalog';
-import { fetchAllRows, insertRows, deleteCombo, fetchCatalog, fetchProductLinks } from '../lib/supabase';
+import { fetchAllRows, insertRows, deleteCombo, fetchCatalog, fetchProductLinks, createImport, deleteImport } from '../lib/supabase';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -24,6 +24,33 @@ export const useAppStore = create<AppState & AppActions>()(
           set({ userData: fresh });
         } else {
           set((s) => ({ userData: [...s.userData, ...rows] }));
+        }
+      },
+
+      importFiles: async (files: { filename: string; rows: DataRow[] }[]) => {
+        for (const f of files) {
+          if (f.rows.length === 0) continue;
+          const channel = f.rows[0].ch || null;
+          const rg = f.rows[0].rg || null;
+          const weeks = [...new Set(f.rows.map((r) => r.w))].sort();
+          const importId = await createImport({
+            filename: f.filename,
+            channel,
+            rg,
+            weeks,
+            row_count: f.rows.length,
+          });
+          await insertRows(f.rows, importId || undefined);
+        }
+        const fresh = await fetchAllRows();
+        set({ userData: fresh });
+      },
+
+      removeImport: async (id: string) => {
+        const ok = await deleteImport(id);
+        if (ok) {
+          const fresh = await fetchAllRows();
+          set({ userData: fresh });
         }
       },
 

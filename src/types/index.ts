@@ -33,6 +33,8 @@ export interface AppState {
 
 export interface AppActions {
   addUserData: (rows: DataRow[]) => Promise<void> | void;
+  importFiles: (files: { filename: string; rows: DataRow[] }[]) => Promise<void>;
+  removeImport: (id: string) => Promise<void>;
   removeUserCombo: (week: string, market: 'NL' | 'BE') => Promise<void> | void;
   setAlias: (orig: string, alias: string) => void;
   clearAlias: (orig: string) => void;

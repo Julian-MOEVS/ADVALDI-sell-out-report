@@ -34,8 +34,8 @@ export async function fetchAllRows(): Promise<DataRow[]> {
   return rows;
 }
 
-/** Insert rows into Supabase (batched in chunks of 500) */
-export async function insertRows(rows: DataRow[]): Promise<{ success: boolean; count: number }> {
+/** Insert rows into Supabase (batched in chunks of 500), optionally tagged with import_id */
+export async function insertRows(rows: DataRow[], importId?: string): Promise<{ success: boolean; count: number }> {
   const BATCH = 500;
   let inserted = 0;
 
@@ -54,6 +54,7 @@ export async function insertRows(rows: DataRow[]): Promise<{ success: boolean; c
       p: r.p,
       s: r.s,
       k: r.k,
+      ...(importId ? { import_id: importId } : {}),
     }));
 
     const { error } = await supabase.from(TABLE).insert(batch);
@@ -77,6 +78,63 @@ export async function deleteCombo(week: string, market: 'NL' | 'BE'): Promise<bo
 
   if (error) {
     console.error('Supabase delete error:', error);
+    return false;
+  }
+  return true;
+}
+
+/* ── Imports tracking ── */
+
+export interface ImportBatch {
+  id: string;
+  filename: string;
+  channel: string | null;
+  rg: string | null;
+  weeks: string[] | null;
+  row_count: number;
+  imported_at: string;
+}
+
+const IMPORTS_TABLE = 'imports';
+
+export async function createImport(data: {
+  filename: string;
+  channel: string | null;
+  rg: string | null;
+  weeks: string[];
+  row_count: number;
+}): Promise<string | null> {
+  const { data: result, error } = await supabase
+    .from(IMPORTS_TABLE)
+    .insert(data)
+    .select('id')
+    .single();
+  if (error || !result) {
+    console.error('Supabase import create error:', error);
+    return null;
+  }
+  return (result as { id: string }).id;
+}
+
+export async function fetchImports(): Promise<ImportBatch[]> {
+  const { data, error } = await supabase
+    .from(IMPORTS_TABLE)
+    .select('id, filename, channel, rg, weeks, row_count, imported_at')
+    .order('imported_at', { ascending: false });
+  if (error) {
+    console.error('Supabase imports fetch error:', error);
+    return [];
+  }
+  return (data || []) as ImportBatch[];
+}
+
+export async function deleteImport(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from(IMPORTS_TABLE)
+    .delete()
+    .eq('id', id);
+  if (error) {
+    console.error('Supabase import delete error:', error);
     return false;
   }
   return true;
