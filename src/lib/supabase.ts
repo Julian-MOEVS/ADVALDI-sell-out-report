@@ -83,6 +83,53 @@ export async function deleteCombo(week: string, market: 'NL' | 'BE'): Promise<bo
   return true;
 }
 
+/* ── Catalog aliases (extra SKUs/EANs per catalog product) ── */
+
+export interface CatalogAlias {
+  id?: string;
+  catalog_sku: string;
+  alias_sku: string | null;
+  alias_ean: string | null;
+  source?: string | null;
+}
+
+const ALIASES_TABLE = 'catalog_aliases';
+
+export async function fetchCatalogAliases(): Promise<CatalogAlias[]> {
+  const { data, error } = await supabase
+    .from(ALIASES_TABLE)
+    .select('id, catalog_sku, alias_sku, alias_ean, source');
+  if (error) {
+    console.error('Supabase aliases fetch error:', error);
+    return [];
+  }
+  return (data || []) as CatalogAlias[];
+}
+
+export async function upsertCatalogAlias(alias: CatalogAlias): Promise<boolean> {
+  const { error } = await supabase
+    .from(ALIASES_TABLE)
+    .insert(alias);
+  if (error) {
+    if (String(error.message || '').includes('duplicate')) return true;
+    console.error('Supabase alias insert error:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function deleteCatalogAlias(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from(ALIASES_TABLE)
+    .delete()
+    .eq('id', id);
+  if (error) {
+    console.error('Supabase alias delete error:', error);
+    return false;
+  }
+  return true;
+}
+
 /* ── Imports tracking ── */
 
 export interface ImportBatch {

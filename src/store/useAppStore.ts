@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
-import { catalogDisplayName, setDynamicCatalog, setProductLinks } from '../lib/catalog';
-import { fetchAllRows, insertRows, deleteCombo, fetchCatalog, fetchProductLinks, createImport, deleteImport } from '../lib/supabase';
+import { catalogDisplayName, setDynamicCatalog, setProductLinks, setCatalogAliases } from '../lib/catalog';
+import { fetchAllRows, insertRows, deleteCombo, fetchCatalog, fetchProductLinks, createImport, deleteImport, fetchCatalogAliases } from '../lib/supabase';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -102,9 +102,10 @@ export const useAppStore = create<AppState & AppActions>()(
   )
 );
 
-// Load data, catalog, and product links from Supabase on app start
-Promise.all([fetchAllRows(), fetchCatalog(), fetchProductLinks()]).then(([rows, catalog, links]) => {
+// Load data, catalog, links, and aliases from Supabase on app start
+Promise.all([fetchAllRows(), fetchCatalog(), fetchProductLinks(), fetchCatalogAliases()]).then(([rows, catalog, links, aliases]) => {
   useAppStore.setState({ userData: rows });
   setDynamicCatalog(catalog);
   setProductLinks(links);
+  setCatalogAliases(aliases);
 });

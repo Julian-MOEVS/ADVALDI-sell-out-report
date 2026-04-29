@@ -7,9 +7,9 @@ import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
 import {
   matchToCatalog, getProductLinks, getDynamicCatalog,
-  setSingleProductLink, removeProductLink,
+  setSingleProductLink, removeProductLink, addAliasInMemory,
 } from '../lib/catalog';
-import { upsertProductLinks, deleteProductLink } from '../lib/supabase';
+import { upsertProductLinks, deleteProductLink, upsertCatalogAlias } from '../lib/supabase';
 import StatCard from '../components/ui/StatCard';
 import ChannelPill from '../components/ui/ChannelPill';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -69,6 +69,21 @@ export default function ProductDetail() {
   const handleRelink = async (articleName: string, newSku: string) => {
     setSingleProductLink(articleName, newSku);
     await upsertProductLinks([{ article_name: articleName, catalog_sku: newSku }]);
+
+    // Also store SKU/EAN aliases so future imports of the same SKU/EAN match correctly
+    const sourceRow = allRows.find((r) => r.an === articleName);
+    if (sourceRow) {
+      const channel = sourceRow.ch || null;
+      if (sourceRow.sku) {
+        const ok = await upsertCatalogAlias({ catalog_sku: newSku, alias_sku: sourceRow.sku, alias_ean: null, source: channel });
+        if (ok) addAliasInMemory({ catalog_sku: newSku, alias_sku: sourceRow.sku, alias_ean: null, source: channel });
+      }
+      if (sourceRow.ean) {
+        const ok = await upsertCatalogAlias({ catalog_sku: newSku, alias_sku: null, alias_ean: sourceRow.ean, source: channel });
+        if (ok) addAliasInMemory({ catalog_sku: newSku, alias_sku: null, alias_ean: sourceRow.ean, source: channel });
+      }
+    }
+
     setEditingArticle(null);
     setSearchTerm('');
     forceUpdate((n) => n + 1);
