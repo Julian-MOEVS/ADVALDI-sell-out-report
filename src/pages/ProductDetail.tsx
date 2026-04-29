@@ -6,11 +6,12 @@ import {
 import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
 import {
-  matchToCatalog, getProductLinks, getDynamicCatalog,
+  matchToCatalog, getProductLinks, getDynamicCatalog, getCatalogBySku,
   setSingleProductLink, removeProductLink, addAliasInMemory,
-  getAliasesForSku, removeAliasInMemory,
+  getAliasesForSku, removeAliasInMemory, updateCatalogInMemory,
 } from '../lib/catalog';
-import { upsertProductLinks, deleteProductLink, upsertCatalogAlias, deleteCatalogAlias } from '../lib/supabase';
+import { upsertProductLinks, deleteProductLink, upsertCatalogAlias, deleteCatalogAlias, updateCatalogEntry } from '../lib/supabase';
+import { Save } from 'lucide-react';
 import StatCard from '../components/ui/StatCard';
 import ChannelPill from '../components/ui/ChannelPill';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -94,6 +95,48 @@ export default function ProductDetail() {
   const aliases = useMemo(() => resolvedSku ? getAliasesForSku(resolvedSku) : [], [resolvedSku]);
   const [newAliasType, setNewAliasType] = useState<'sku' | 'ean'>('sku');
   const [newAliasValue, setNewAliasValue] = useState('');
+
+  // Catalog entry edit state
+  const catEntry = useMemo(() => resolvedSku ? getCatalogBySku(resolvedSku) : undefined, [resolvedSku]);
+  const [editSku, setEditSku] = useState('');
+  const [editEan, setEditEan] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editBrand, setEditBrand] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [savingCat, setSavingCat] = useState(false);
+
+  const startEdit = () => {
+    if (!catEntry) return;
+    setEditSku(catEntry.sku);
+    setEditEan(catEntry.ean);
+    setEditName(catEntry.name);
+    setEditBrand(catEntry.brand);
+    setEditMode(true);
+  };
+
+  const saveEdit = async () => {
+    if (!catEntry) return;
+    setSavingCat(true);
+    const ok = await updateCatalogEntry(catEntry.sku, {
+      sku: editSku.trim(),
+      name: editName.trim(),
+      ean: editEan.trim(),
+      brand: editBrand.trim(),
+    });
+    if (ok) {
+      updateCatalogInMemory(catEntry.sku, {
+        sku: editSku.trim(),
+        name: editName.trim(),
+        ean: editEan.trim(),
+        brand: editBrand.trim(),
+      });
+      setEditMode(false);
+      forceUpdate((n) => n + 1);
+    } else {
+      alert('Opslaan mislukt');
+    }
+    setSavingCat(false);
+  };
 
   const handleAddAlias = async () => {
     const v = newAliasValue.trim();
@@ -252,29 +295,90 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      {/* SKU & EAN aliases */}
+      {/* Productbasis (catalogus) */}
+      {resolvedSku && catEntry && (
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Package size={16} className="text-dark/60" />
+              <h3 className="text-sm font-medium text-dark/60">Productbasis</h3>
+            </div>
+            {!editMode ? (
+              <button
+                onClick={startEdit}
+                className="text-xs text-accent hover:underline flex items-center gap-1"
+              >
+                <Link2 size={12} /> Aanpassen
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button onClick={() => setEditMode(false)} className="text-xs text-dark/50 hover:text-dark">Annuleren</button>
+                <button
+                  onClick={saveEdit}
+                  disabled={savingCat || !editSku.trim() || !editName.trim()}
+                  className="text-xs px-3 py-1 bg-accent text-white rounded hover:opacity-90 disabled:opacity-30 flex items-center gap-1"
+                >
+                  <Save size={12} /> {savingCat ? 'Opslaan...' : 'Opslaan'}
+                </button>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-dark/40 mb-3">
+            De primaire SKU, EAN en naam van dit product. Imports matchen op deze waarden (en aliases hieronder).
+          </p>
+          {!editMode ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="py-2 px-3 bg-bg rounded-lg">
+                <div className="text-[10px] uppercase text-dark/40 mb-0.5">SKU</div>
+                <code className="text-sm">{catEntry.sku}</code>
+              </div>
+              <div className="py-2 px-3 bg-bg rounded-lg">
+                <div className="text-[10px] uppercase text-dark/40 mb-0.5">EAN</div>
+                <code className="text-sm">{catEntry.ean || '—'}</code>
+              </div>
+              <div className="py-2 px-3 bg-bg rounded-lg">
+                <div className="text-[10px] uppercase text-dark/40 mb-0.5">Naam</div>
+                <span className="text-sm">{catEntry.name}</span>
+              </div>
+              <div className="py-2 px-3 bg-bg rounded-lg">
+                <div className="text-[10px] uppercase text-dark/40 mb-0.5">Merk</div>
+                <span className="text-sm">{catEntry.brand || '—'}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="py-2 px-3 bg-bg rounded-lg">
+                <div className="text-[10px] uppercase text-dark/40 mb-0.5">SKU</div>
+                <input value={editSku} onChange={(e) => setEditSku(e.target.value)} className="w-full bg-white border border-bg4 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-accent" />
+              </label>
+              <label className="py-2 px-3 bg-bg rounded-lg">
+                <div className="text-[10px] uppercase text-dark/40 mb-0.5">EAN</div>
+                <input value={editEan} onChange={(e) => setEditEan(e.target.value)} className="w-full bg-white border border-bg4 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-accent" />
+              </label>
+              <label className="py-2 px-3 bg-bg rounded-lg">
+                <div className="text-[10px] uppercase text-dark/40 mb-0.5">Naam</div>
+                <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full bg-white border border-bg4 rounded px-2 py-1 text-sm focus:outline-none focus:border-accent" />
+              </label>
+              <label className="py-2 px-3 bg-bg rounded-lg">
+                <div className="text-[10px] uppercase text-dark/40 mb-0.5">Merk</div>
+                <input value={editBrand} onChange={(e) => setEditBrand(e.target.value)} className="w-full bg-white border border-bg4 rounded px-2 py-1 text-sm focus:outline-none focus:border-accent" />
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Extra SKU's & EANs (aliases) */}
       {resolvedSku && (
         <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
           <div className="flex items-center gap-2 mb-3">
             <Link2 size={16} className="text-dark/60" />
-            <h3 className="text-sm font-medium text-dark/60">SKU's & EANs ({aliases.length + 1})</h3>
+            <h3 className="text-sm font-medium text-dark/60">Extra SKU's & EANs ({aliases.length})</h3>
           </div>
           <p className="text-xs text-dark/40 mb-3">
-            Catalogus-SKU + EAN zijn de primaire identifiers. Voeg extra SKU's of EANs toe (bv. Shopify- of MediaMarkt-codes) zodat imports met die waarden direct correct gematcht worden.
+            Aanvullende SKU's of EANs voor dit product (bv. Shopify- of MediaMarkt-codes die afwijken van de catalogus-basis).
           </p>
           <div className="space-y-1 mb-3">
-            <div className="flex items-center gap-2 py-2 px-3 bg-accent/5 border border-accent/20 rounded-lg">
-              <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent rounded font-semibold">PRIMARY</span>
-              <code className="text-xs flex-1">{resolvedSku}</code>
-              <span className="text-xs text-dark/50">SKU</span>
-            </div>
-            {first?.ean && (
-              <div className="flex items-center gap-2 py-2 px-3 bg-accent/5 border border-accent/20 rounded-lg">
-                <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent rounded font-semibold">PRIMARY</span>
-                <code className="text-xs flex-1">{first.ean}</code>
-                <span className="text-xs text-dark/50">EAN</span>
-              </div>
-            )}
             {aliases.map((a) => (
               <div key={a.id || `${a.alias_sku}-${a.alias_ean}`} className="flex items-center gap-2 py-2 px-3 bg-bg rounded-lg">
                 <span className="text-xs px-2 py-0.5 bg-info/20 text-info rounded">{a.alias_sku ? 'SKU' : 'EAN'}</span>

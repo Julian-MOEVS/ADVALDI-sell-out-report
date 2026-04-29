@@ -81,6 +81,23 @@ export function getCatalogBySku(sku: string): CatalogEntry | undefined {
   return dynamicCatalog[sku];
 }
 
+export function updateCatalogInMemory(oldSku: string, fields: CatalogEntry) {
+  delete dynamicCatalog[oldSku];
+  dynamicCatalog[fields.sku] = fields;
+  // rebuild EAN/name indices
+  eanIndex = {};
+  nameIndex = {};
+  for (const entry of Object.values(dynamicCatalog)) {
+    if (entry.ean) eanIndex[entry.ean] = entry.sku;
+    if (entry.name) nameIndex[entry.name.toLowerCase()] = entry.sku;
+  }
+  // rebuild alias indices since their catalog_sku may have changed
+  for (const a of allAliases) {
+    if (a.catalog_sku === oldSku) a.catalog_sku = fields.sku;
+  }
+  setCatalogAliases(allAliases);
+}
+
 /**
  * Try to match an article from sell-out data to a catalog entry.
  * Returns the catalog SKU if matched, undefined if not.

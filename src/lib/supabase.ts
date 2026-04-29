@@ -307,6 +307,40 @@ export async function deleteProductLink(article_name: string): Promise<boolean> 
   return true;
 }
 
+/** Update a single catalog product's fields. If sku changes, cascade to product_links and catalog_aliases. */
+export async function updateCatalogEntry(
+  oldSku: string,
+  newFields: { sku: string; name: string; ean: string; brand: string }
+): Promise<boolean> {
+  if (oldSku !== newFields.sku) {
+    // Insert new row first
+    const { error: insErr } = await supabase.from(CATALOG_TABLE).insert(newFields);
+    if (insErr) {
+      console.error('Catalog rename insert error:', insErr);
+      return false;
+    }
+    // Update references
+    await supabase.from(LINKS_TABLE).update({ catalog_sku: newFields.sku }).eq('catalog_sku', oldSku);
+    await supabase.from(ALIASES_TABLE).update({ catalog_sku: newFields.sku }).eq('catalog_sku', oldSku);
+    // Delete old row
+    const { error: delErr } = await supabase.from(CATALOG_TABLE).delete().eq('sku', oldSku);
+    if (delErr) {
+      console.error('Catalog rename delete error:', delErr);
+      return false;
+    }
+    return true;
+  }
+  const { error } = await supabase
+    .from(CATALOG_TABLE)
+    .update({ name: newFields.name, ean: newFields.ean, brand: newFields.brand })
+    .eq('sku', oldSku);
+  if (error) {
+    console.error('Catalog update error:', error);
+    return false;
+  }
+  return true;
+}
+
 /** Upsert product links */
 export async function upsertProductLinks(links: ProductLink[]): Promise<{ success: boolean; count: number }> {
   if (links.length === 0) return { success: true, count: 0 };
