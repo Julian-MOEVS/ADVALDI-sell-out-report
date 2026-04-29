@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { parseExcelFile, parseExportStatistics, parseFnacVdbCsv } from '../lib/excel';
-import { matchToCatalog, getDynamicCatalog, setProductLinks } from '../lib/catalog';
-import { upsertProductLinks, fetchProductLinks } from '../lib/supabase';
+import { matchToCatalog, getDynamicCatalog, setProductLinks, addAliasInMemory } from '../lib/catalog';
+import { upsertProductLinks, fetchProductLinks, upsertCatalogAlias } from '../lib/supabase';
 import type { DataRow } from '../types';
 import type { ProductLink } from '../lib/supabase';
 import ChannelPill from '../components/ui/ChannelPill';
@@ -111,7 +111,7 @@ export default function Import() {
   const handleConfirm = async () => {
     setSaving(true);
 
-    // Save manual links to Supabase
+    // Save manual links + SKU/EAN aliases to Supabase
     const newLinks: ProductLink[] = Object.entries(manualLinks)
       .filter(([, sku]) => sku)
       .map(([article_name, catalog_sku]) => ({ article_name, catalog_sku }));
@@ -120,6 +120,22 @@ export default function Import() {
       await upsertProductLinks(newLinks);
       const fresh = await fetchProductLinks();
       setProductLinks(fresh);
+
+      // For each manual link, also store SKU/EAN as alias for future imports
+      for (const [articleName, catalogSku] of Object.entries(manualLinks)) {
+        if (!catalogSku) continue;
+        const sample = parsed.find((r) => r.an === articleName);
+        if (!sample) continue;
+        const channel = sample.ch || null;
+        if (sample.sku) {
+          const ok = await upsertCatalogAlias({ catalog_sku: catalogSku, alias_sku: sample.sku, alias_ean: null, source: channel });
+          if (ok) addAliasInMemory({ catalog_sku: catalogSku, alias_sku: sample.sku, alias_ean: null, source: channel });
+        }
+        if (sample.ean) {
+          const ok = await upsertCatalogAlias({ catalog_sku: catalogSku, alias_sku: null, alias_ean: sample.ean, source: channel });
+          if (ok) addAliasInMemory({ catalog_sku: catalogSku, alias_sku: null, alias_ean: sample.ean, source: channel });
+        }
+      }
     }
 
     // Save data per file (with import tracking)
@@ -134,6 +150,27 @@ export default function Import() {
 
   const setLink = (articleName: string, catalogSku: string) => {
     setManualLinks((prev) => ({ ...prev, [articleName]: catalogSku }));
+  };
+
+  // Fuzzy suggest: token-overlap score between article name and catalog name
+  const suggestMatch = (articleName: string): string | null => {
+    const tokens = articleName.toLowerCase().split(/[\s+\-/]+/).filter((t) => t.length > 1);
+    if (tokens.length === 0) return null;
+    let bestSku: string | null = null;
+    let bestScore = 0;
+    for (const c of catalog) {
+      const cTokens = c.name.toLowerCase().split(/[\s+\-/]+/).filter((t) => t.length > 1);
+      if (cTokens.length === 0) continue;
+      let score = 0;
+      for (const t of tokens) if (cTokens.includes(t)) score++;
+      // require all article tokens that are color-like (matte, fluro, sage, etc) to also appear
+      const ratio = score / Math.max(tokens.length, cTokens.length);
+      if (ratio > bestScore && score >= 2) {
+        bestScore = ratio;
+        bestSku = c.sku;
+      }
+    }
+    return bestScore >= 0.5 ? bestSku : null;
   };
 
   const filteredCatalog = (articleName: string) => {
@@ -271,7 +308,10 @@ export default function Import() {
                 <h3 className="text-sm font-medium">Handmatig koppelen</h3>
               </div>
               <div className="space-y-3">
-                {unmatched.map((m) => (
+                {unmatched.map((m) => {
+                  const suggested = manualLinks[m.articleName] ? null : suggestMatch(m.articleName);
+                  const suggestedEntry = suggested ? catalog.find((c) => c.sku === suggested) : null;
+                  return (
                   <div key={m.articleName} className="border border-bg4 rounded-xl p-3">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <div>
@@ -286,6 +326,15 @@ export default function Import() {
                         <span className="text-xs text-success bg-success/10 px-2 py-0.5 rounded">Gekoppeld</span>
                       )}
                     </div>
+                    {suggestedEntry && (
+                      <button
+                        onClick={() => setLink(m.articleName, suggestedEntry.sku)}
+                        className="w-full mb-2 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg text-xs flex items-center justify-between transition"
+                      >
+                        <span>Voorgesteld: <strong>{suggestedEntry.name}</strong></span>
+                        <span className="text-dark/30 ml-2">{suggestedEntry.sku}</span>
+                      </button>
+                    )}
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -315,7 +364,8 @@ export default function Import() {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
