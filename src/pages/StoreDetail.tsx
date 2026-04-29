@@ -6,17 +6,17 @@ import {
 import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
 import StatCard from '../components/ui/StatCard';
-import MarketPill from '../components/ui/MarketPill';
+import ChannelPill from '../components/ui/ChannelPill';
 import Sparkline from '../components/ui/Sparkline';
 import { ArrowLeft, ShoppingCart, Package, TrendingUp, Box } from 'lucide-react';
 
 export default function StoreDetail() {
-  const { allData, detailId, selectedWeek, selectedMarket, displayName, setActivePage } = useAppStore();
+  const { allData, detailId, selectedWeek, selectedChannel, displayName, setActivePage } = useAppStore();
   const data = allData();
   const storeName = detailId;
 
   const allRows = useMemo(() => data.filter((r) => (r.sl || r.st) === storeName), [data, storeName]);
-  const rows = useMemo(() => filtered(allRows, selectedWeek, selectedMarket), [allRows, selectedWeek, selectedMarket]);
+  const rows = useMemo(() => filtered(allRows, selectedWeek, selectedChannel), [allRows, selectedWeek, selectedChannel]);
 
   const allWeeks = weeks(data);
   const first = allRows[0];
@@ -108,8 +108,7 @@ export default function StoreDetail() {
         <div className="flex-1 min-w-0">
           <h2 className="text-lg font-semibold truncate" title={storeName}>{storeName}</h2>
           <div className="flex items-center gap-2 mt-1">
-            <MarketPill market={first.rg} />
-            {first.ch && <span className="text-xs text-dark/40">{first.ch}</span>}
+            <ChannelPill channel={first.ch} />
           </div>
         </div>
       </div>

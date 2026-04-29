@@ -12,7 +12,7 @@ export const useAppStore = create<AppState & AppActions>()(
       aliases: {},
       platformConfig: {},
       selectedWeek: 'all',
-      selectedMarket: 'all',
+      selectedChannel: 'all',
       activePage: 'dashboard',
       detailId: '',
       sidebarOpen: false,
@@ -55,7 +55,7 @@ export const useAppStore = create<AppState & AppActions>()(
         set((s) => ({ platformConfig: { ...s.platformConfig, ...config } })),
 
       setSelectedWeek: (week) => set({ selectedWeek: week }),
-      setSelectedMarket: (market) => set({ selectedMarket: market }),
+      setSelectedChannel: (channel) => set({ selectedChannel: channel }),
       setActivePage: (page, detailId = '') => set({ activePage: page, detailId }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
@@ -69,7 +69,7 @@ export const useAppStore = create<AppState & AppActions>()(
         aliases: state.aliases,
         platformConfig: state.platformConfig,
         selectedWeek: state.selectedWeek,
-        selectedMarket: state.selectedMarket,
+        selectedChannel: state.selectedChannel,
       }),
     }
   )

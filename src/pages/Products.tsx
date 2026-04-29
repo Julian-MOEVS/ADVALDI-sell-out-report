@@ -26,9 +26,9 @@ interface ProductRow {
 }
 
 export default function Products() {
-  const { allData, selectedWeek, selectedMarket, setActivePage } = useAppStore();
+  const { allData, selectedWeek, selectedChannel, setActivePage } = useAppStore();
   const data = allData();
-  const rows = useMemo(() => filtered(data, selectedWeek, selectedMarket), [data, selectedWeek, selectedMarket]);
+  const rows = useMemo(() => filtered(data, selectedWeek, selectedChannel), [data, selectedWeek, selectedChannel]);
 
   const [search, setSearch] = useState('');
   const [showCatalog, setShowCatalog] = useState(false);

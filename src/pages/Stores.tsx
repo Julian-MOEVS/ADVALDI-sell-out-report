@@ -1,13 +1,13 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { filtered, groupBy, stockForArticle } from '../lib/filters';
-import MarketPill from '../components/ui/MarketPill';
+import ChannelPill from '../components/ui/ChannelPill';
 import RankBadge from '../components/ui/RankBadge';
 
 export default function Stores() {
-  const { allData, selectedWeek, selectedMarket, setActivePage } = useAppStore();
+  const { allData, selectedWeek, selectedChannel, setActivePage } = useAppStore();
   const data = allData();
-  const rows = useMemo(() => filtered(data, selectedWeek, selectedMarket), [data, selectedWeek, selectedMarket]);
+  const rows = useMemo(() => filtered(data, selectedWeek, selectedChannel), [data, selectedWeek, selectedChannel]);
 
   const totalSales = rows.reduce((a, r) => a + r.s, 0);
 
@@ -20,7 +20,7 @@ export default function Stores() {
         const articles = new Set(sRows.map((r) => r.an)).size;
         return {
           store,
-          market: sRows[0].rg,
+          channel: sRows[0].ch,
           sales,
           stock,
           articles,
@@ -38,7 +38,7 @@ export default function Stores() {
             <tr className="text-left text-dark/40 text-xs uppercase bg-bg">
               <th className="p-3">#</th>
               <th className="p-3">Winkel</th>
-              <th className="p-3">Markt</th>
+              <th className="p-3">Kanaal</th>
               <th className="p-3 text-right">Verkopen</th>
               <th className="p-3 text-right">Voorraad</th>
               <th className="p-3 text-right">Artikelen</th>
@@ -59,7 +59,7 @@ export default function Stores() {
                     {s.store}
                   </button>
                 </td>
-                <td className="p-3"><MarketPill market={s.market} /></td>
+                <td className="p-3"><ChannelPill channel={s.channel} /></td>
                 <td className="p-3 text-right font-mono">{s.sales}</td>
                 <td className="p-3 text-right font-mono">{s.stock}</td>
                 <td className="p-3 text-right font-mono">{s.articles}</td>

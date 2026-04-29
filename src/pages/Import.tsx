@@ -5,7 +5,7 @@ import { matchToCatalog, getDynamicCatalog, setProductLinks } from '../lib/catal
 import { upsertProductLinks, fetchProductLinks } from '../lib/supabase';
 import type { DataRow } from '../types';
 import type { ProductLink } from '../lib/supabase';
-import MarketPill from '../components/ui/MarketPill';
+import ChannelPill from '../components/ui/ChannelPill';
 import { Upload, FileSpreadsheet, Info, AlertTriangle, CheckCircle, Link2 } from 'lucide-react';
 
 type ImportType = 'mediamarkt' | 'shopify' | 'brincr' | 'fnac_vdb';
@@ -329,7 +329,7 @@ export default function Import() {
                 <thead>
                   <tr className="text-left text-dark/40 text-xs uppercase bg-bg">
                     <th className="p-3">Week</th>
-                    <th className="p-3">Markt</th>
+                    <th className="p-3">Kanaal</th>
                     <th className="p-3">Bron</th>
                     <th className="p-3">Artikel</th>
                     <th className="p-3">Koppeling</th>
@@ -345,7 +345,7 @@ export default function Import() {
                     return (
                       <tr key={i} className="border-t border-bg4">
                         <td className="p-3">{r.w}</td>
-                        <td className="p-3"><MarketPill market={r.rg} /></td>
+                        <td className="p-3"><ChannelPill channel={r.ch} /></td>
                         <td className="p-3 text-dark/50 text-xs">{r.ch || '—'}</td>
                         <td className="p-3 truncate max-w-[180px]" title={r.an}>{r.an}</td>
                         <td className="p-3">

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, sum, stockForData, groupBy, resolveProductKey, resolvedDisplayName, resolveStoreKey } from '../lib/filters';
 import StatCard from '../components/ui/StatCard';
-import MarketPill from '../components/ui/MarketPill';
+import ChannelPill from '../components/ui/ChannelPill';
 import RankBadge from '../components/ui/RankBadge';
 import TrendChart from '../components/charts/TrendChart';
 import BrandChart from '../components/charts/BrandChart';
@@ -10,9 +10,9 @@ import TopProductsChart from '../components/charts/TopProductsChart';
 import { ShoppingCart, Package, TrendingUp, Box, Store, Calendar } from 'lucide-react';
 
 export default function Dashboard() {
-  const { allData, selectedWeek, selectedMarket, displayName, aliases, setActivePage } = useAppStore();
+  const { allData, selectedWeek, selectedChannel, displayName, aliases, setActivePage } = useAppStore();
   const data = allData();
-  const rows = useMemo(() => filtered(data, selectedWeek, selectedMarket), [data, selectedWeek, selectedMarket]);
+  const rows = useMemo(() => filtered(data, selectedWeek, selectedChannel), [data, selectedWeek, selectedChannel]);
 
   const allWeeks = weeks(data);
   const totalSales = sum(rows, 's');
@@ -28,7 +28,7 @@ export default function Dashboard() {
     const idx = allWeeks.indexOf(selectedWeek);
     if (idx > 0) {
       const prevWeek = allWeeks[idx - 1];
-      const prevRows = filtered(data, prevWeek, selectedMarket);
+      const prevRows = filtered(data, prevWeek, selectedChannel);
       const prevSales = sum(prevRows, 's');
       if (prevSales > 0) {
         const pct = ((totalSales - prevSales) / prevSales) * 100;
@@ -43,7 +43,7 @@ export default function Dashboard() {
     return Object.entries(g)
       .map(([store, sRows]) => ({
         store,
-        market: sRows[0].rg,
+        channel: sRows[0].ch,
         sales: sRows.reduce((a, r) => a + r.s, 0),
       }))
       .sort((a, b) => b.sales - a.sales)
@@ -107,7 +107,7 @@ export default function Dashboard() {
 
       <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
         <h3 className="text-sm font-medium text-dark/60 mb-3">Weektrend verkopen</h3>
-        <TrendChart data={rows} market={selectedMarket} />
+        <TrendChart data={rows} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -130,7 +130,7 @@ export default function Dashboard() {
                 <tr className="text-left text-dark/40 text-xs uppercase">
                   <th className="pb-2 pr-2">#</th>
                   <th className="pb-2 pr-2">Winkel</th>
-                  <th className="pb-2 pr-2">Markt</th>
+                  <th className="pb-2 pr-2">Kanaal</th>
                   <th className="pb-2 pr-2 text-right">Verkopen</th>
                   <th className="pb-2"></th>
                 </tr>
@@ -142,7 +142,7 @@ export default function Dashboard() {
                     <td className="py-1.5 pr-2 max-w-[200px]">
                       <button onClick={() => setActivePage('storedetail', s.store)} className="text-accent hover:underline truncate block text-left max-w-full" title={s.store}>{s.store}</button>
                     </td>
-                    <td className="py-1.5 pr-2"><MarketPill market={s.market} /></td>
+                    <td className="py-1.5 pr-2"><ChannelPill channel={s.channel} /></td>
                     <td className="py-1.5 pr-2 text-right font-mono">{s.sales}</td>
                     <td className="py-1.5">{i < 3 && <RankBadge rank={i + 1} />}</td>
                   </tr>

@@ -1,15 +1,16 @@
 import { useAppStore } from '../../store/useAppStore';
-import { weeks } from '../../lib/filters';
+import { weeks, channels } from '../../lib/filters';
 import { Plus, Menu } from 'lucide-react';
 
 export default function Topbar() {
   const {
     allData, selectedWeek, setSelectedWeek,
-    selectedMarket, setSelectedMarket,
+    selectedChannel, setSelectedChannel,
     setActivePage, setSidebarOpen,
   } = useAppStore();
   const data = allData();
   const allWeeks = weeks(data);
+  const allChannels = channels(data);
 
   return (
     <header className="sticky top-0 z-30 h-[60px] bg-white border-b border-bg4 flex items-center justify-between px-5 shadow-sm">
@@ -33,13 +34,14 @@ export default function Topbar() {
         </select>
 
         <select
-          value={selectedMarket}
-          onChange={(e) => setSelectedMarket(e.target.value as 'all' | 'NL' | 'BE')}
+          value={selectedChannel}
+          onChange={(e) => setSelectedChannel(e.target.value)}
           className="bg-bg border border-bg4 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:border-accent font-light"
         >
-          <option value="all">Benelux</option>
-          <option value="NL">Nederland</option>
-          <option value="BE">België/Luxemburg</option>
+          <option value="all">Alle kanalen</option>
+          {allChannels.map((ch) => (
+            <option key={ch} value={ch}>{ch}</option>
+          ))}
         </select>
 
         <button

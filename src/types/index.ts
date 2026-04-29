@@ -25,7 +25,7 @@ export interface AppState {
   aliases: Record<string, string>;
   platformConfig: PlatformConfig;
   selectedWeek: 'all' | string;
-  selectedMarket: 'all' | 'NL' | 'BE';
+  selectedChannel: 'all' | string;
   activePage: string;
   detailId: string;
   sidebarOpen: boolean;
@@ -39,7 +39,7 @@ export interface AppActions {
   clearAllAliases: () => void;
   setPlatformConfig: (config: Partial<PlatformConfig>) => void;
   setSelectedWeek: (week: 'all' | string) => void;
-  setSelectedMarket: (market: 'all' | 'NL' | 'BE') => void;
+  setSelectedChannel: (channel: 'all' | string) => void;
   setActivePage: (page: string, detailId?: string) => void;
   setSidebarOpen: (open: boolean) => void;
   allData: () => DataRow[];

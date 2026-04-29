@@ -7,9 +7,9 @@ import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
 import RankBadge from '../components/ui/RankBadge';
 
 export default function Brands() {
-  const { allData, selectedWeek, selectedMarket } = useAppStore();
+  const { allData, selectedWeek, selectedChannel } = useAppStore();
   const data = allData();
-  const rows = useMemo(() => filtered(data, selectedWeek, selectedMarket), [data, selectedWeek, selectedMarket]);
+  const rows = useMemo(() => filtered(data, selectedWeek, selectedChannel), [data, selectedWeek, selectedChannel]);
 
   const allWeeks = weeks(rows);
 
@@ -31,10 +31,8 @@ export default function Brands() {
       const weekRows = rows.filter((r) => r.w === w);
       const entry: Record<string, string | number> = { week: `W${w.slice(-2)}` };
       for (const brand of brands) {
-        const nlRows = weekRows.filter((r) => r.mfr === brand && r.rg === 'NL');
-        const beRows = weekRows.filter((r) => r.mfr === brand && r.rg === 'BE');
-        entry[`${brand}_NL`] = nlRows.reduce((a, r) => a + r.s, 0);
-        entry[`${brand}_BE`] = beRows.reduce((a, r) => a + r.s, 0);
+        const bRows = weekRows.filter((r) => r.mfr === brand);
+        entry[brand] = bRows.reduce((a, r) => a + r.s, 0);
       }
       return entry;
     });
@@ -70,24 +68,11 @@ export default function Brands() {
             <Legend />
             {brands.map((brand, i) => (
               <Bar
-                key={`${brand}_NL`}
-                dataKey={`${brand}_NL`}
+                key={brand}
+                dataKey={brand}
                 name={brand}
-                stackId={brand}
                 fill={colors[i % colors.length]}
                 radius={[2, 2, 0, 0]}
-              />
-            ))}
-            {brands.map((brand, i) => (
-              <Bar
-                key={`${brand}_BE`}
-                dataKey={`${brand}_BE`}
-                name={`${brand} (BE)`}
-                stackId={brand}
-                fill={colors[i % colors.length]}
-                fillOpacity={0.4}
-                radius={[2, 2, 0, 0]}
-                legendType="none"
               />
             ))}
           </BarChart>

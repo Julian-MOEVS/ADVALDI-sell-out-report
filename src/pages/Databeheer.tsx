@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { EMBEDDED_DATA } from '../lib/data';
-import MarketPill from '../components/ui/MarketPill';
-import { Database, Download, Trash2, RotateCcw } from 'lucide-react';
+import { matchToCatalog } from '../lib/catalog';
+import ChannelPill from '../components/ui/ChannelPill';
+import { Database, Download, Trash2, RotateCcw, Search } from 'lucide-react';
 
 export default function Databeheer() {
   const { allData, userData, aliases, platformConfig, removeUserCombo, setAlias, clearAlias, clearAllAliases } = useAppStore();
@@ -10,14 +11,19 @@ export default function Databeheer() {
 
   const [search, setSearch] = useState('');
 
-  // Week+market combos
+  // Row inspector filters
+  const [rowWeek, setRowWeek] = useState<string>('all');
+  const [rowChannel, setRowChannel] = useState<string>('all');
+  const [rowSearch, setRowSearch] = useState('');
+
+  // Week+channel combos
   const combos = useMemo(() => {
-    const set = new Set(data.map((r) => `${r.w}|${r.rg}`));
+    const set = new Set(data.map((r) => `${r.w}|${r.ch}|${r.rg}`));
     return [...set].sort().map((key) => {
-      const [w, rg] = key.split('|') as [string, 'NL' | 'BE'];
-      const allRows = data.filter((r) => r.w === w && r.rg === rg);
-      const embeddedRows = EMBEDDED_DATA.filter((r) => r.w === w && r.rg === rg);
-      const userRows = userData.filter((r) => r.w === w && r.rg === rg);
+      const [w, ch, rg] = key.split('|') as [string, string, 'NL' | 'BE'];
+      const allRows = data.filter((r) => r.w === w && r.ch === ch && r.rg === rg);
+      const embeddedRows = EMBEDDED_DATA.filter((r) => r.w === w && r.ch === ch && r.rg === rg);
+      const userRows = userData.filter((r) => r.w === w && r.ch === ch && r.rg === rg);
       const source =
         embeddedRows.length > 0 && userRows.length > 0
           ? 'Ingebouwd+Import'
@@ -26,6 +32,7 @@ export default function Databeheer() {
           : 'Geïmporteerd';
       return {
         w,
+        ch,
         rg,
         source,
         rows: allRows.length,
@@ -47,6 +54,26 @@ export default function Databeheer() {
     const q = search.toLowerCase();
     return arr.filter((a) => a.an.toLowerCase().includes(q) || a.mfr.toLowerCase().includes(q));
   }, [data, search]);
+
+  const allChannels = useMemo(() => [...new Set(data.map((r) => r.ch).filter(Boolean))].sort(), [data]);
+  const allWeekVals = useMemo(() => [...new Set(data.map((r) => r.w))].sort(), [data]);
+
+  const inspectRows = useMemo(() => {
+    let list = data;
+    if (rowWeek !== 'all') list = list.filter((r) => r.w === rowWeek);
+    if (rowChannel !== 'all') list = list.filter((r) => r.ch === rowChannel);
+    if (rowSearch) {
+      const q = rowSearch.toLowerCase();
+      list = list.filter(
+        (r) =>
+          r.an.toLowerCase().includes(q) ||
+          (r.ean || '').toLowerCase().includes(q) ||
+          (r.sku || '').toLowerCase().includes(q) ||
+          (r.st || '').toLowerCase().includes(q)
+      );
+    }
+    return list.slice(0, 500);
+  }, [data, rowWeek, rowChannel, rowSearch]);
 
   const handleExportBackup = () => {
     const backup = {
@@ -95,7 +122,7 @@ export default function Databeheer() {
             <thead>
               <tr className="text-left text-dark/40 text-xs uppercase">
                 <th className="pb-2 pr-3">Week</th>
-                <th className="pb-2 pr-3">Markt</th>
+                <th className="pb-2 pr-3">Kanaal</th>
                 <th className="pb-2 pr-3">Bron</th>
                 <th className="pb-2 pr-3 text-right">Rijen</th>
                 <th className="pb-2 pr-3 text-right">Verkopen</th>
@@ -105,9 +132,9 @@ export default function Databeheer() {
             </thead>
             <tbody>
               {combos.map((c) => (
-                <tr key={`${c.w}-${c.rg}`} className="border-t border-bg4">
+                <tr key={`${c.w}-${c.ch}-${c.rg}`} className="border-t border-bg4">
                   <td className="py-2 pr-3">Week {parseInt(c.w.slice(-2))} ({c.w})</td>
-                  <td className="py-2 pr-3"><MarketPill market={c.rg} /></td>
+                  <td className="py-2 pr-3"><ChannelPill channel={c.ch} /></td>
                   <td className="py-2 pr-3">
                     <span className={`text-xs px-2 py-0.5 rounded ${
                       c.source === 'Ingebouwd' ? 'bg-gray-600/30 text-dark/50'
@@ -124,7 +151,7 @@ export default function Databeheer() {
                     {c.canDelete && (
                       <button
                         onClick={() => {
-                          if (confirm(`Weet je zeker dat je de geïmporteerde data voor week ${c.w} (${c.rg}) wilt verwijderen?`)) {
+                          if (confirm(`Weet je zeker dat je de geïmporteerde data voor week ${c.w} (${c.ch}) wilt verwijderen?`)) {
                             removeUserCombo(c.w, c.rg);
                           }
                         }}
@@ -139,6 +166,76 @@ export default function Databeheer() {
               ))}
               {combos.length === 0 && (
                 <tr><td colSpan={7} className="py-6 text-center text-dark/40">Geen data beschikbaar</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Section 2b: Row inspector */}
+      <section className="bg-white border border-bg4 rounded-3xl shadow-sm p-5">
+        <h3 className="text-sm font-medium text-dark/60 mb-3 flex items-center gap-2">
+          <Search size={16} /> Rijen inspecteren
+        </h3>
+        <p className="text-xs text-dark/50 mb-3">
+          Bekijk individuele rijen in de database. Filter op week, kanaal en zoek op artikelnaam/EAN/SKU. Toont max. 500 rijen.
+        </p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <select value={rowWeek} onChange={(e) => setRowWeek(e.target.value)} className="bg-bg border border-bg4 rounded-lg px-3 py-1.5 text-sm">
+            <option value="all">Alle weken</option>
+            {allWeekVals.map((w) => <option key={w} value={w}>Week {parseInt(w.slice(-2))} ({w})</option>)}
+          </select>
+          <select value={rowChannel} onChange={(e) => setRowChannel(e.target.value)} className="bg-bg border border-bg4 rounded-lg px-3 py-1.5 text-sm">
+            <option value="all">Alle kanalen</option>
+            {allChannels.map((ch) => <option key={ch} value={ch}>{ch}</option>)}
+          </select>
+          <input
+            type="text"
+            placeholder="Zoek op artikel / EAN / SKU / winkel..."
+            value={rowSearch}
+            onChange={(e) => setRowSearch(e.target.value)}
+            className="flex-1 min-w-[200px] bg-bg border border-bg4 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent"
+          />
+        </div>
+        <p className="text-xs text-dark/40 mb-2">{inspectRows.length} rijen getoond</p>
+        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-white">
+              <tr className="text-left text-dark/40 uppercase">
+                <th className="pb-2 pr-2">Wk</th>
+                <th className="pb-2 pr-2">Kanaal</th>
+                <th className="pb-2 pr-2">Winkel</th>
+                <th className="pb-2 pr-2">Artikel</th>
+                <th className="pb-2 pr-2">EAN</th>
+                <th className="pb-2 pr-2">SKU</th>
+                <th className="pb-2 pr-2">Catalog SKU</th>
+                <th className="pb-2 pr-2 text-right">Sales</th>
+                <th className="pb-2 pr-2 text-right">Stock</th>
+                <th className="pb-2 text-right">Inkoop</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inspectRows.map((r, i) => {
+                const matched = matchToCatalog(r.an, r.ean, r.sku);
+                return (
+                  <tr key={i} className="border-t border-bg4">
+                    <td className="py-1 pr-2">{r.w.slice(-2)}</td>
+                    <td className="py-1 pr-2">{r.ch}</td>
+                    <td className="py-1 pr-2 truncate max-w-[120px]" title={r.st}>{r.st}</td>
+                    <td className="py-1 pr-2 truncate max-w-[180px]" title={r.an}>{r.an}</td>
+                    <td className="py-1 pr-2 font-mono text-dark/40">{r.ean}</td>
+                    <td className="py-1 pr-2 font-mono text-dark/40">{r.sku}</td>
+                    <td className="py-1 pr-2 font-mono text-xs">
+                      {matched ? <span className="text-success">{matched}</span> : <span className="text-warning">—</span>}
+                    </td>
+                    <td className="py-1 pr-2 text-right font-mono">{r.s}</td>
+                    <td className="py-1 pr-2 text-right font-mono">{r.k}</td>
+                    <td className="py-1 text-right font-mono">{r.p}</td>
+                  </tr>
+                );
+              })}
+              {inspectRows.length === 0 && (
+                <tr><td colSpan={10} className="py-6 text-center text-dark/40">Geen rijen gevonden</td></tr>
               )}
             </tbody>
           </table>

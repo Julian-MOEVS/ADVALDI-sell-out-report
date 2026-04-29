@@ -4,13 +4,17 @@ import { matchToCatalog, catalogDisplayName } from './catalog';
 export function filtered(
   data: DataRow[],
   week: 'all' | string,
-  market: 'all' | 'NL' | 'BE'
+  channel: 'all' | string
 ): DataRow[] {
   return data.filter(
     (r) =>
       (week === 'all' || r.w === week) &&
-      (market === 'all' || r.rg === market)
+      (channel === 'all' || r.ch === channel)
   );
+}
+
+export function channels(data: DataRow[]): string[] {
+  return [...new Set(data.map((r) => r.ch).filter(Boolean))].sort();
 }
 
 export function weeks(data: DataRow[]): string[] {

@@ -11,12 +11,12 @@ import {
 } from '../lib/catalog';
 import { upsertProductLinks, deleteProductLink } from '../lib/supabase';
 import StatCard from '../components/ui/StatCard';
-import MarketPill from '../components/ui/MarketPill';
+import ChannelPill from '../components/ui/ChannelPill';
 import StatusBadge from '../components/ui/StatusBadge';
 import { ArrowLeft, ShoppingCart, Package, TrendingUp, Store, Link2, Unlink, X } from 'lucide-react';
 
 export default function ProductDetail() {
-  const { allData, detailId, selectedWeek, selectedMarket, displayName, setActivePage } = useAppStore();
+  const { allData, detailId, selectedWeek, selectedChannel, displayName, setActivePage } = useAppStore();
   const data = allData();
   const articleName = detailId;
 
@@ -29,7 +29,7 @@ export default function ProductDetail() {
       return rSku === resolvedSku || r.an === articleName;
     });
   }, [data, articleName, resolvedSku]);
-  const rows = useMemo(() => filtered(allRows, selectedWeek, selectedMarket), [allRows, selectedWeek, selectedMarket]);
+  const rows = useMemo(() => filtered(allRows, selectedWeek, selectedChannel), [allRows, selectedWeek, selectedChannel]);
 
   const allWeeks = weeks(data);
   const first = allRows[0];
@@ -108,7 +108,7 @@ export default function ProductDetail() {
     return Object.entries(g)
       .map(([store, sRows]) => ({
         store,
-        market: sRows[0].rg,
+        channel: sRows[0].ch,
         sales: sRows.reduce((a, r) => a + r.s, 0),
         stock: stockForArticle(sRows),
         purchase: sRows.reduce((a, r) => a + r.p, 0),
@@ -311,7 +311,7 @@ export default function ProductDetail() {
               <tr className="text-left text-dark/40 text-xs uppercase">
                 <th className="pb-2 pr-3">#</th>
                 <th className="pb-2 pr-3">Winkel</th>
-                <th className="pb-2 pr-3">Markt</th>
+                <th className="pb-2 pr-3">Kanaal</th>
                 <th className="pb-2 pr-3 text-right">Verkopen</th>
                 <th className="pb-2 pr-3 text-right">Voorraad</th>
                 <th className="pb-2 text-right">Inkopen</th>
@@ -330,7 +330,7 @@ export default function ProductDetail() {
                       {s.store}
                     </button>
                   </td>
-                  <td className="py-1.5 pr-3"><MarketPill market={s.market} /></td>
+                  <td className="py-1.5 pr-3"><ChannelPill channel={s.channel} /></td>
                   <td className="py-1.5 pr-3 text-right font-mono">{s.sales}</td>
                   <td className="py-1.5 pr-3 text-right font-mono">{s.stock}</td>
                   <td className="py-1.5 text-right font-mono">{s.purchase}</td>

@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { filtered, weeks, sum, groupBy, stockForArticle, resolveProductKey, resolvedDisplayName, resolveStoreKey } from '../lib/filters';
+import { filtered, weeks, sum, groupBy, stockForArticle, resolveProductKey, resolvedDisplayName, resolveStoreKey, channels } from '../lib/filters';
 import { exportWeekExcel } from '../lib/excel';
 import StatCard from '../components/ui/StatCard';
-import MarketPill from '../components/ui/MarketPill';
+import ChannelPill from '../components/ui/ChannelPill';
 import { ShoppingCart, Package, TrendingUp, Store, Download } from 'lucide-react';
 
 export default function WeekView() {
@@ -12,17 +12,16 @@ export default function WeekView() {
   const allWeeks = weeks(data);
 
   const [activeWeek, setActiveWeek] = useState(allWeeks[allWeeks.length - 1] || '');
-  const [activeMarket, setActiveMarket] = useState<'all' | 'NL' | 'BE'>('all');
+  const [activeChannel, setActiveChannel] = useState<'all' | string>('all');
 
-  const rows = useMemo(() => filtered(data, activeWeek, activeMarket), [data, activeWeek, activeMarket]);
-  const hasNL = data.some((r) => r.w === activeWeek && r.rg === 'NL');
-  const hasBE = data.some((r) => r.w === activeWeek && r.rg === 'BE');
+  const rows = useMemo(() => filtered(data, activeWeek, activeChannel), [data, activeWeek, activeChannel]);
+  const weekChannels = useMemo(() => channels(data.filter((r) => r.w === activeWeek)), [data, activeWeek]);
 
   const prevWeekIdx = allWeeks.indexOf(activeWeek);
   const prevWeek = prevWeekIdx > 0 ? allWeeks[prevWeekIdx - 1] : null;
   const prevRows = useMemo(
-    () => (prevWeek ? filtered(data, prevWeek, activeMarket) : []),
-    [data, prevWeek, activeMarket]
+    () => (prevWeek ? filtered(data, prevWeek, activeChannel) : []),
+    [data, prevWeek, activeChannel]
   );
 
   const totalSales = sum(rows, 's');
@@ -54,7 +53,7 @@ export default function WeekView() {
     return Object.entries(g)
       .map(([store, sRows]) => ({
         store,
-        market: sRows[0].rg,
+        channel: sRows[0].ch,
         sales: sRows.reduce((a, r) => a + r.s, 0),
       }))
       .sort((a, b) => b.sales - a.sales);
@@ -76,12 +75,12 @@ export default function WeekView() {
         }));
         const withSales = articleEntries.filter((a) => a.sales > 0);
         const withoutSales = articleEntries.length - withSales.length;
-        return { brand, sales, stock, articleEntries: withSales, withoutSales, market: bRows[0].rg };
+        return { brand, sales, stock, articleEntries: withSales, withoutSales, channel: bRows[0].ch };
       })
       .sort((a, b) => b.sales - a.sales);
   }, [rows, aliases]);
 
-  const marketLabel = activeMarket === 'all' ? 'NL+BE' : activeMarket === 'NL' ? 'NL' : 'BE/LU';
+  const channelLabel = activeChannel === 'all' ? 'Alle kanalen' : activeChannel;
 
   if (allWeeks.length === 0) {
     return <div className="text-center text-dark/40 py-12">Geen data beschikbaar. Importeer eerst Excel-bestanden.</div>;
@@ -104,27 +103,27 @@ export default function WeekView() {
         ))}
       </div>
 
-      {/* Market filter */}
-      <div className="flex gap-2 items-center">
-        {(['all', 'NL', 'BE'] as const).map((m) => {
-          const disabled = (m === 'NL' && !hasNL) || (m === 'BE' && !hasBE);
-          return (
-            <button
-              key={m}
-              onClick={() => !disabled && setActiveMarket(m)}
-              disabled={disabled}
-              className={`px-3 py-1.5 rounded-lg text-sm transition ${
-                m === activeMarket ? 'bg-gradient-to-r from-accent-light to-accent text-white' : disabled ? 'bg-bg text-dark/30 cursor-not-allowed' : 'bg-bg text-dark/50 hover:text-dark'
-              }`}
-            >
-              {m === 'all' ? 'NL + BE' : m === 'NL' ? 'NL' : 'BE/LU'}
-            </button>
-          );
-        })}
-        <div className="ml-4 flex gap-2 text-xs">
-          <span className={hasNL ? 'text-nl-blue' : 'text-nl-blue/30'}>NL data {hasNL ? '✓' : '—'}</span>
-          <span className={hasBE ? 'text-be-amber' : 'text-be-amber/30'}>BE/LU data {hasBE ? '✓' : '—'}</span>
-        </div>
+      {/* Channel filter */}
+      <div className="flex gap-2 items-center flex-wrap">
+        <button
+          onClick={() => setActiveChannel('all')}
+          className={`px-3 py-1.5 rounded-lg text-sm transition ${
+            activeChannel === 'all' ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/50 hover:text-dark'
+          }`}
+        >
+          Alle kanalen
+        </button>
+        {weekChannels.map((ch) => (
+          <button
+            key={ch}
+            onClick={() => setActiveChannel(ch)}
+            className={`px-3 py-1.5 rounded-lg text-sm transition ${
+              ch === activeChannel ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/50 hover:text-dark'
+            }`}
+          >
+            {ch}
+          </button>
+        ))}
       </div>
 
       {/* KPI */}
@@ -192,7 +191,7 @@ export default function WeekView() {
                 <tr className="text-left text-dark/40 text-xs uppercase">
                   <th className="pb-2 pr-2">#</th>
                   <th className="pb-2 pr-2">Winkel</th>
-                  <th className="pb-2 pr-2">Markt</th>
+                  <th className="pb-2 pr-2">Kanaal</th>
                   <th className="pb-2 text-right">Verkopen</th>
                 </tr>
               </thead>
@@ -201,7 +200,7 @@ export default function WeekView() {
                   <tr key={s.store} className="border-t border-bg4">
                     <td className="py-1.5 pr-2 text-dark/40">{i + 1}</td>
                     <td className="py-1.5 pr-2 truncate max-w-[180px]" title={s.store}>{s.store}</td>
-                    <td className="py-1.5 pr-2"><MarketPill market={s.market} /></td>
+                    <td className="py-1.5 pr-2"><ChannelPill channel={s.channel} /></td>
                     <td className="py-1.5 text-right font-mono">{s.sales}</td>
                   </tr>
                 ))}
@@ -216,7 +215,7 @@ export default function WeekView() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-dark/60">Merk-breakdown</h3>
           <button
-            onClick={() => exportWeekExcel(activeWeek, marketLabel, rows, prevRows, aliases)}
+            onClick={() => exportWeekExcel(activeWeek, channelLabel, rows, prevRows, aliases)}
             className="flex items-center gap-1 text-xs text-accent hover:text-accent/80"
             title="Exporteert één Excel-bestand in Pure x ADVALDI format met per merk een tabblad"
           >
@@ -226,7 +225,7 @@ export default function WeekView() {
         {brandGroups.map((bg) => (
           <details key={bg.brand} open={bg.sales > 0} className="mb-2">
             <summary className="cursor-pointer flex items-center gap-2 py-2 px-3 bg-bg rounded-lg hover:bg-bg4 transition">
-              <MarketPill market={bg.market} />
+              <ChannelPill channel={bg.channel} />
               <span className="font-medium">{bg.brand}</span>
               <span className="ml-auto flex gap-2">
                 <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent rounded">{bg.sales} verkopen</span>
