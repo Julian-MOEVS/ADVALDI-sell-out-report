@@ -8,8 +8,9 @@ import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
 import {
   matchToCatalog, getProductLinks, getDynamicCatalog,
   setSingleProductLink, removeProductLink, addAliasInMemory,
+  getAliasesForSku, removeAliasInMemory,
 } from '../lib/catalog';
-import { upsertProductLinks, deleteProductLink, upsertCatalogAlias } from '../lib/supabase';
+import { upsertProductLinks, deleteProductLink, upsertCatalogAlias, deleteCatalogAlias } from '../lib/supabase';
 import StatCard from '../components/ui/StatCard';
 import ChannelPill from '../components/ui/ChannelPill';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -88,6 +89,34 @@ export default function ProductDetail() {
     setSearchTerm('');
     forceUpdate((n) => n + 1);
     setActivePage('products');
+  };
+
+  const aliases = useMemo(() => resolvedSku ? getAliasesForSku(resolvedSku) : [], [resolvedSku]);
+  const [newAliasType, setNewAliasType] = useState<'sku' | 'ean'>('sku');
+  const [newAliasValue, setNewAliasValue] = useState('');
+
+  const handleAddAlias = async () => {
+    const v = newAliasValue.trim();
+    if (!v || !resolvedSku) return;
+    const alias = newAliasType === 'sku'
+      ? { catalog_sku: resolvedSku, alias_sku: v, alias_ean: null, source: 'manual' }
+      : { catalog_sku: resolvedSku, alias_sku: null, alias_ean: v, source: 'manual' };
+    const ok = await upsertCatalogAlias(alias);
+    if (ok) {
+      addAliasInMemory(alias);
+      setNewAliasValue('');
+      forceUpdate((n) => n + 1);
+    }
+  };
+
+  const handleRemoveAlias = async (id?: string) => {
+    if (!id) return;
+    if (!confirm('Alias verwijderen?')) return;
+    const ok = await deleteCatalogAlias(id);
+    if (ok) {
+      removeAliasInMemory(id);
+      forceUpdate((n) => n + 1);
+    }
   };
 
   const handleUnlink = async (articleName: string) => {
@@ -222,6 +251,72 @@ export default function ProductDetail() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* SKU & EAN aliases */}
+      {resolvedSku && (
+        <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Link2 size={16} className="text-dark/60" />
+            <h3 className="text-sm font-medium text-dark/60">SKU's & EANs ({aliases.length + 1})</h3>
+          </div>
+          <p className="text-xs text-dark/40 mb-3">
+            Catalogus-SKU + EAN zijn de primaire identifiers. Voeg extra SKU's of EANs toe (bv. Shopify- of MediaMarkt-codes) zodat imports met die waarden direct correct gematcht worden.
+          </p>
+          <div className="space-y-1 mb-3">
+            <div className="flex items-center gap-2 py-2 px-3 bg-accent/5 border border-accent/20 rounded-lg">
+              <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent rounded font-semibold">PRIMARY</span>
+              <code className="text-xs flex-1">{resolvedSku}</code>
+              <span className="text-xs text-dark/50">SKU</span>
+            </div>
+            {first?.ean && (
+              <div className="flex items-center gap-2 py-2 px-3 bg-accent/5 border border-accent/20 rounded-lg">
+                <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent rounded font-semibold">PRIMARY</span>
+                <code className="text-xs flex-1">{first.ean}</code>
+                <span className="text-xs text-dark/50">EAN</span>
+              </div>
+            )}
+            {aliases.map((a) => (
+              <div key={a.id || `${a.alias_sku}-${a.alias_ean}`} className="flex items-center gap-2 py-2 px-3 bg-bg rounded-lg">
+                <span className="text-xs px-2 py-0.5 bg-info/20 text-info rounded">{a.alias_sku ? 'SKU' : 'EAN'}</span>
+                <code className="text-xs flex-1">{a.alias_sku || a.alias_ean}</code>
+                {a.source && <span className="text-xs text-dark/40">{a.source}</span>}
+                <button
+                  onClick={() => handleRemoveAlias(a.id)}
+                  className="p-1 rounded hover:bg-danger/10 hover:text-danger text-dark/40 transition"
+                  title="Alias verwijderen"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={newAliasType}
+              onChange={(e) => setNewAliasType(e.target.value as 'sku' | 'ean')}
+              className="bg-bg border border-bg4 rounded-lg px-3 py-1.5 text-xs"
+            >
+              <option value="sku">SKU</option>
+              <option value="ean">EAN</option>
+            </select>
+            <input
+              type="text"
+              placeholder={newAliasType === 'sku' ? 'bv. SCPURZ041-00001' : 'bv. 5060937158002'}
+              value={newAliasValue}
+              onChange={(e) => setNewAliasValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddAlias(); }}
+              className="flex-1 bg-bg border border-bg4 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-accent"
+            />
+            <button
+              onClick={handleAddAlias}
+              disabled={!newAliasValue.trim()}
+              className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs hover:opacity-90 disabled:opacity-30 transition"
+            >
+              Toevoegen
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Bron-artikelen / koppelingen */}
       <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
