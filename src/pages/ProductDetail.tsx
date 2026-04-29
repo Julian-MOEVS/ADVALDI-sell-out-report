@@ -1,15 +1,19 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar,
 } from 'recharts';
 import { useAppStore } from '../store/useAppStore';
 import { filtered, weeks, groupBy, stockForArticle } from '../lib/filters';
-import { matchToCatalog } from '../lib/catalog';
+import {
+  matchToCatalog, getProductLinks, getDynamicCatalog,
+  setSingleProductLink, removeProductLink,
+} from '../lib/catalog';
+import { upsertProductLinks, deleteProductLink } from '../lib/supabase';
 import StatCard from '../components/ui/StatCard';
 import MarketPill from '../components/ui/MarketPill';
 import StatusBadge from '../components/ui/StatusBadge';
-import { ArrowLeft, ShoppingCart, Package, TrendingUp, Store } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Package, TrendingUp, Store, Link2, Unlink, X } from 'lucide-react';
 
 export default function ProductDetail() {
   const { allData, detailId, selectedWeek, selectedMarket, displayName, setActivePage } = useAppStore();
@@ -29,6 +33,55 @@ export default function ProductDetail() {
 
   const allWeeks = weeks(data);
   const first = allRows[0];
+
+  // Source articles linked to this product (for fixing wrong links)
+  const [editingArticle, setEditingArticle] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [, forceUpdate] = useState(0);
+
+  const sourceArticles = useMemo(() => {
+    const links = getProductLinks();
+    const byArticle: Record<string, { ean: string; sku: string; sales: number; channels: Set<string> }> = {};
+    for (const r of allRows) {
+      if (!byArticle[r.an]) byArticle[r.an] = { ean: r.ean, sku: r.sku, sales: 0, channels: new Set() };
+      byArticle[r.an].sales += r.s;
+      if (r.ch) byArticle[r.an].channels.add(r.ch);
+    }
+    return Object.entries(byArticle).map(([an, info]) => {
+      let matchType: 'manual' | 'sku' | 'name' | 'ean' | 'none' = 'none';
+      if (links[an]) matchType = 'manual';
+      else if (info.sku && getDynamicCatalog().some((c) => c.sku === info.sku)) matchType = 'sku';
+      else if (info.ean && getDynamicCatalog().some((c) => c.ean === info.ean)) matchType = 'ean';
+      else if (matchToCatalog(an)) matchType = 'name';
+      return { an, ean: info.ean, sku: info.sku, sales: info.sales, channels: [...info.channels], matchType };
+    }).sort((a, b) => b.sales - a.sales);
+  }, [allRows]);
+
+  const catalog = useMemo(() => getDynamicCatalog(), []);
+  const filteredCatalog = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return catalog.slice(0, 15);
+    return catalog.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.sku.toLowerCase().includes(q) || c.ean.includes(q)
+    ).slice(0, 15);
+  }, [catalog, searchTerm]);
+
+  const handleRelink = async (articleName: string, newSku: string) => {
+    setSingleProductLink(articleName, newSku);
+    await upsertProductLinks([{ article_name: articleName, catalog_sku: newSku }]);
+    setEditingArticle(null);
+    setSearchTerm('');
+    forceUpdate((n) => n + 1);
+    setActivePage('products');
+  };
+
+  const handleUnlink = async (articleName: string) => {
+    if (!confirm(`Koppeling verwijderen voor "${articleName}"?`)) return;
+    removeProductLink(articleName);
+    await deleteProductLink(articleName);
+    forceUpdate((n) => n + 1);
+    setActivePage('products');
+  };
 
   const totalSales = rows.reduce((a, r) => a + r.s, 0);
   const totalStock = stockForArticle(rows);
@@ -152,6 +205,100 @@ export default function ProductDetail() {
               <Bar dataKey="inkopen" fill="#d97706" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Bron-artikelen / koppelingen */}
+      <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Link2 size={16} className="text-dark/60" />
+          <h3 className="text-sm font-medium text-dark/60">Bron-artikelen ({sourceArticles.length})</h3>
+        </div>
+        <p className="text-xs text-dark/40 mb-3">
+          Onderliggende artikelnamen die onder dit product vallen. Klopt het niet? Verplaats of verwijder de koppeling.
+        </p>
+        <div className="space-y-2">
+          {sourceArticles.map((sa) => (
+            <div key={sa.an} className="border border-bg4 rounded-xl p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate" title={sa.an}>{sa.an}</p>
+                  <p className="text-xs text-dark/40 mt-0.5">
+                    {sa.sku && <>SKU: <code className="bg-bg px-1 rounded">{sa.sku}</code> · </>}
+                    {sa.ean && <>EAN: {sa.ean} · </>}
+                    {sa.sales} verkopen
+                    {sa.channels.length > 0 && <> · {sa.channels.join(', ')}</>}
+                  </p>
+                  <p className="text-xs mt-1">
+                    Match: <span className={
+                      sa.matchType === 'manual' ? 'text-warning' :
+                      sa.matchType === 'sku' ? 'text-success' :
+                      sa.matchType === 'ean' ? 'text-info' :
+                      sa.matchType === 'name' ? 'text-dark/50' : 'text-danger'
+                    }>
+                      {sa.matchType === 'manual' ? 'handmatige koppeling' :
+                       sa.matchType === 'sku' ? 'via SKU' :
+                       sa.matchType === 'ean' ? 'via EAN' :
+                       sa.matchType === 'name' ? 'via naam' : 'geen'}
+                    </span>
+                  </p>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    onClick={() => { setEditingArticle(editingArticle === sa.an ? null : sa.an); setSearchTerm(''); }}
+                    className="p-1.5 rounded bg-bg hover:bg-bg4 transition text-dark/60"
+                    title="Koppeling wijzigen"
+                  >
+                    <Link2 size={14} />
+                  </button>
+                  {sa.matchType === 'manual' && (
+                    <button
+                      onClick={() => handleUnlink(sa.an)}
+                      className="p-1.5 rounded bg-bg hover:bg-danger/20 hover:text-danger transition text-dark/60"
+                      title="Handmatige koppeling verwijderen"
+                    >
+                      <Unlink size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {editingArticle === sa.an && (
+                <div className="mt-3 pt-3 border-t border-bg4">
+                  <div className="flex gap-2 items-center mb-2">
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Zoek catalogus product (naam, SKU, EAN)..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="flex-1 bg-bg border border-bg4 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-accent"
+                    />
+                    <button
+                      onClick={() => { setEditingArticle(null); setSearchTerm(''); }}
+                      className="p-1.5 rounded bg-bg hover:bg-bg4 text-dark/60"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto border border-bg4 rounded-lg">
+                    {filteredCatalog.map((c) => (
+                      <button
+                        key={c.sku}
+                        onClick={() => handleRelink(sa.an, c.sku)}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-bg4 transition flex justify-between items-center border-b border-bg4 last:border-0"
+                      >
+                        <span className="truncate">{c.name}</span>
+                        <span className="text-dark/30 ml-2 shrink-0">{c.sku}</span>
+                      </button>
+                    ))}
+                    {filteredCatalog.length === 0 && (
+                      <p className="text-xs text-dark/40 px-3 py-2">Geen resultaten</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 

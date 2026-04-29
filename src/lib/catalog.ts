@@ -31,6 +31,14 @@ export function getProductLinks(): Record<string, string> {
   return { ...productLinks };
 }
 
+export function setSingleProductLink(articleName: string, catalogSku: string) {
+  productLinks[articleName] = catalogSku;
+}
+
+export function removeProductLink(articleName: string) {
+  delete productLinks[articleName];
+}
+
 export function getDynamicCatalog(): CatalogEntry[] {
   return Object.values(dynamicCatalog);
 }

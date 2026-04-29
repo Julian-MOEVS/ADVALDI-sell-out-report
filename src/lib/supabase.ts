@@ -189,6 +189,19 @@ export async function fetchProductLinks(): Promise<ProductLink[]> {
   return links;
 }
 
+/** Delete a single product link by article_name */
+export async function deleteProductLink(article_name: string): Promise<boolean> {
+  const { error } = await supabase
+    .from(LINKS_TABLE)
+    .delete()
+    .eq('article_name', article_name);
+  if (error) {
+    console.error('Supabase link delete error:', error);
+    return false;
+  }
+  return true;
+}
+
 /** Upsert product links */
 export async function upsertProductLinks(links: ProductLink[]): Promise<{ success: boolean; count: number }> {
   if (links.length === 0) return { success: true, count: 0 };
