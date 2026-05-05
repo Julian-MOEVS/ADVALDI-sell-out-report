@@ -1,12 +1,12 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { parseExcelFile, parseExportStatistics, parseFnacVdbCsv } from '../lib/excel';
-import { matchToCatalog, getDynamicCatalog, setProductLinks, addAliasInMemory } from '../lib/catalog';
-import { upsertProductLinks, fetchProductLinks, upsertCatalogAlias } from '../lib/supabase';
+import { matchToCatalog, getDynamicCatalog, setProductLinks, setDynamicCatalog, addAliasInMemory } from '../lib/catalog';
+import { upsertProductLinks, fetchProductLinks, upsertCatalogAlias, upsertCatalog, fetchCatalog } from '../lib/supabase';
 import type { DataRow } from '../types';
-import type { ProductLink } from '../lib/supabase';
+import type { ProductLink, CatalogEntry } from '../lib/supabase';
 import ChannelPill from '../components/ui/ChannelPill';
-import { Upload, FileSpreadsheet, Info, AlertTriangle, CheckCircle, Link2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, Info, AlertTriangle, CheckCircle, Link2, Plus, X } from 'lucide-react';
 
 type ImportType = 'mediamarkt' | 'shopify' | 'brincr' | 'fnac_vdb';
 
@@ -38,6 +38,17 @@ export default function Import() {
   // Manual linking state: articleName → selected catalog SKU
   const [manualLinks, setManualLinks] = useState<Record<string, string>>({});
   const [searchTerms, setSearchTerms] = useState<Record<string, string>>({});
+
+  // Add-to-catalog modal
+  const [addModal, setAddModal] = useState<null | {
+    articleName: string;
+    sku: string;
+    name: string;
+    ean: string;
+    brand: string;
+  }>(null);
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState('');
 
   const catalog = useMemo(() => getDynamicCatalog(), [parsed]);
 
@@ -150,6 +161,44 @@ export default function Import() {
 
   const setLink = (articleName: string, catalogSku: string) => {
     setManualLinks((prev) => ({ ...prev, [articleName]: catalogSku }));
+  };
+
+  const openAddModal = (m: MatchResult) => {
+    setAddError('');
+    setAddModal({
+      articleName: m.articleName,
+      sku: m.sku || '',
+      name: m.articleName,
+      ean: m.ean || '',
+      brand: '',
+    });
+  };
+
+  const handleAddToCatalog = async () => {
+    if (!addModal) return;
+    const sku = addModal.sku.trim();
+    const name = addModal.name.trim();
+    const ean = addModal.ean.trim();
+    const brand = addModal.brand.trim();
+
+    if (!sku) { setAddError('SKU is verplicht'); return; }
+    if (!name) { setAddError('Naam is verplicht'); return; }
+    if (!brand) { setAddError('Merk is verplicht'); return; }
+
+    setAddSaving(true);
+    const entry: CatalogEntry = { sku, name, ean, brand };
+    const result = await upsertCatalog([entry]);
+    if (!result.success) {
+      setAddError('Opslaan mislukt');
+      setAddSaving(false);
+      return;
+    }
+
+    const fresh = await fetchCatalog();
+    setDynamicCatalog(fresh);
+    setManualLinks((prev) => ({ ...prev, [addModal.articleName]: sku }));
+    setAddSaving(false);
+    setAddModal(null);
   };
 
   // Fuzzy suggest: token-overlap score between article name and catalog name
@@ -322,9 +371,17 @@ export default function Import() {
                           {m.rowCount} rij(en)
                         </p>
                       </div>
-                      {manualLinks[m.articleName] && (
-                        <span className="text-xs text-success bg-success/10 px-2 py-0.5 rounded">Gekoppeld</span>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {manualLinks[m.articleName] && (
+                          <span className="text-xs text-success bg-success/10 px-2 py-0.5 rounded">Gekoppeld</span>
+                        )}
+                        <button
+                          onClick={() => openAddModal(m)}
+                          className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg bg-accent/10 text-accent hover:bg-accent/20 transition"
+                        >
+                          <Plus size={12} /> Voeg product toe aan database
+                        </button>
+                      </div>
                     </div>
                     {suggestedEntry && (
                       <button
@@ -359,7 +416,15 @@ export default function Import() {
                           </button>
                         ))}
                         {filteredCatalog(m.articleName).length === 0 && (
-                          <p className="text-xs text-dark/40 px-2 py-1">Geen resultaten</p>
+                          <div className="px-2 py-2 flex items-center justify-between gap-2">
+                            <p className="text-xs text-dark/40">Geen resultaten</p>
+                            <button
+                              onClick={() => openAddModal(m)}
+                              className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg bg-accent/10 text-accent hover:bg-accent/20 transition"
+                            >
+                              <Plus size={12} /> Maak nieuw product aan
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}
@@ -430,6 +495,92 @@ export default function Import() {
             >
               Annuleren
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add product to catalog modal */}
+      {addModal && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => !addSaving && setAddModal(null)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-medium">Product toevoegen aan database</h3>
+                <p className="text-xs text-dark/40 mt-1">Vul de ontbrekende informatie aan</p>
+              </div>
+              <button
+                onClick={() => !addSaving && setAddModal(null)}
+                className="text-dark/40 hover:text-dark"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-dark/50 mb-1 uppercase tracking-wide">SKU *</label>
+                <input
+                  type="text"
+                  value={addModal.sku}
+                  onChange={(e) => setAddModal({ ...addModal, sku: e.target.value })}
+                  className="w-full bg-bg border border-bg4 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-dark/50 mb-1 uppercase tracking-wide">Naam *</label>
+                <input
+                  type="text"
+                  value={addModal.name}
+                  onChange={(e) => setAddModal({ ...addModal, name: e.target.value })}
+                  className="w-full bg-bg border border-bg4 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-dark/50 mb-1 uppercase tracking-wide">EAN</label>
+                <input
+                  type="text"
+                  value={addModal.ean}
+                  onChange={(e) => setAddModal({ ...addModal, ean: e.target.value })}
+                  className="w-full bg-bg border border-bg4 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-dark/50 mb-1 uppercase tracking-wide">Merk *</label>
+                <input
+                  type="text"
+                  value={addModal.brand}
+                  onChange={(e) => setAddModal({ ...addModal, brand: e.target.value })}
+                  className="w-full bg-bg border border-bg4 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+
+            {addError && (
+              <p className="text-xs text-warning mt-3">{addError}</p>
+            )}
+
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={handleAddToCatalog}
+                disabled={addSaving}
+                className="px-4 py-2 bg-gradient-to-r from-accent-light to-accent text-white rounded-lg hover:opacity-90 transition disabled:opacity-50 text-sm"
+              >
+                {addSaving ? 'Opslaan...' : 'Toevoegen & koppelen'}
+              </button>
+              <button
+                onClick={() => setAddModal(null)}
+                disabled={addSaving}
+                className="px-4 py-2 bg-bg text-dark/60 rounded-lg hover:bg-bg4 transition text-sm"
+              >
+                Annuleren
+              </button>
+            </div>
           </div>
         </div>
       )}
