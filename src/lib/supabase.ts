@@ -97,6 +97,22 @@ export async function deleteChannel(channel: string): Promise<boolean> {
   return true;
 }
 
+/** Delete rows for a channel matching any of the given ISO weeks. */
+export async function deleteChannelWeeks(channel: string, weeks: string[]): Promise<boolean> {
+  if (weeks.length === 0) return true;
+  const { error } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('ch', channel)
+    .in('w', weeks);
+
+  if (error) {
+    console.error('Supabase delete channel+weeks error:', error);
+    return false;
+  }
+  return true;
+}
+
 /* ── Catalog aliases (extra SKUs/EANs per catalog product) ── */
 
 export interface CatalogAlias {
