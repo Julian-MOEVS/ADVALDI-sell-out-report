@@ -4,7 +4,36 @@ import { filtered, weeks, sum, groupBy, stockForArticle, resolveProductKey, reso
 import { exportWeekExcel } from '../lib/excel';
 import StatCard from '../components/ui/StatCard';
 import ChannelPill from '../components/ui/ChannelPill';
-import { ShoppingCart, Package, TrendingUp, Store, Download } from 'lucide-react';
+import { ShoppingCart, Package, TrendingUp, Store, Download, Calendar } from 'lucide-react';
+
+const NL_MONTHS = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+
+function isoWeekMonday(week: string): Date | null {
+  if (!/^\d{6}$/.test(week)) return null;
+  const year = parseInt(week.slice(0, 4));
+  const wk = parseInt(week.slice(4, 6));
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - (jan4Day - 1) + (wk - 1) * 7);
+  return monday;
+}
+
+function formatWeekRange(week: string): string {
+  const mon = isoWeekMonday(week);
+  if (!mon) return '';
+  const sun = new Date(mon);
+  sun.setUTCDate(mon.getUTCDate() + 6);
+  const dM = mon.getUTCDate();
+  const dS = sun.getUTCDate();
+  const mM = NL_MONTHS[mon.getUTCMonth()];
+  const mS = NL_MONTHS[sun.getUTCMonth()];
+  const yM = mon.getUTCFullYear();
+  const yS = sun.getUTCFullYear();
+  if (yM !== yS) return `${dM} ${mM} ${yM} – ${dS} ${mS} ${yS}`;
+  if (mM !== mS) return `${dM} ${mM} – ${dS} ${mS} ${yM}`;
+  return `${dM} – ${dS} ${mM} ${yM}`;
+}
 
 export default function WeekView() {
   const { allData, aliases } = useAppStore();
@@ -82,6 +111,8 @@ export default function WeekView() {
 
   const channelLabel = activeChannel === 'all' ? 'Alle kanalen' : activeChannel;
 
+  const weekDateRange = useMemo(() => formatWeekRange(activeWeek), [activeWeek]);
+
   if (allWeeks.length === 0) {
     return <div className="text-center text-dark/40 py-12">Geen data beschikbaar. Importeer eerst Excel-bestanden.</div>;
   }
@@ -90,18 +121,35 @@ export default function WeekView() {
     <div className="space-y-6">
       {/* Week tabs */}
       <div className="flex flex-wrap gap-2">
-        {allWeeks.map((w) => (
-          <button
-            key={w}
-            onClick={() => setActiveWeek(w)}
-            className={`px-3 py-1.5 rounded-lg text-sm transition ${
-              w === activeWeek ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/50 hover:text-dark'
-            }`}
-          >
-            W{w.slice(-2)}
-          </button>
-        ))}
+        {allWeeks.map((w) => {
+          const range = formatWeekRange(w);
+          return (
+            <button
+              key={w}
+              onClick={() => setActiveWeek(w)}
+              title={range}
+              className={`flex flex-col items-start px-3 py-1.5 rounded-lg text-sm transition leading-tight ${
+                w === activeWeek ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/50 hover:text-dark'
+              }`}
+            >
+              <span>W{w.slice(-2)}</span>
+              {range && (
+                <span className={`text-[10px] ${w === activeWeek ? 'text-white/80' : 'text-dark/40'}`}>{range}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Active week date header */}
+      {weekDateRange && (
+        <div className="flex items-center gap-2 text-sm text-dark/60">
+          <Calendar size={14} className="text-accent" />
+          <span>
+            Week <strong className="text-dark">{parseInt(activeWeek.slice(-2))}</strong> · {weekDateRange}
+          </span>
+        </div>
+      )}
 
       {/* Channel filter */}
       <div className="flex gap-2 items-center flex-wrap">
