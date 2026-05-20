@@ -447,7 +447,9 @@ export function parseExportStatistics(
         const colAantal = findCol(headers, 'Aantal producten');
         const colOrderDatum = findCol(headers, 'Orderdatum');
 
-        const hasOrderDetails = colOrderNr >= 0 && colOrderDatum >= 0;
+        // Shopify wordt altijd geaggregeerd op product-niveau onder één kanaal "Shopify".
+        // Per-klant detail wordt genegeerd, ongeacht of het bestand Ordernummer/Orderdatum bevat.
+        const hasOrderDetails = channel !== 'Shopify' && colOrderNr >= 0 && colOrderDatum >= 0;
         const rows: DataRow[] = [];
 
         if (hasOrderDetails) {

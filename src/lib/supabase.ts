@@ -83,6 +83,20 @@ export async function deleteCombo(week: string, market: 'NL' | 'BE'): Promise<bo
   return true;
 }
 
+/** Delete all rows for a given sales channel (e.g. 'Shopify') */
+export async function deleteChannel(channel: string): Promise<boolean> {
+  const { error } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('ch', channel);
+
+  if (error) {
+    console.error('Supabase delete channel error:', error);
+    return false;
+  }
+  return true;
+}
+
 /* ── Catalog aliases (extra SKUs/EANs per catalog product) ── */
 
 export interface CatalogAlias {

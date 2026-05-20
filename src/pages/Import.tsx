@@ -287,7 +287,10 @@ export default function Import() {
             </>
           )}
           {importType === 'shopify' && (
-            <p>Upload <code className="text-xs bg-bg px-1 rounded">export_statistics</code> bestanden van Shopify orders.</p>
+            <>
+              <p>Upload <code className="text-xs bg-bg px-1 rounded">export_statistics</code> bestanden van Shopify (kolommen: Artikelnummer, Omschrijving, Producten, ...).</p>
+              <p className="mt-1">De kolom <strong>Producten</strong> wordt geteld als het aantal verkochte producten. Alle rijen worden onder kanaal <strong>Shopify</strong> opgeslagen — niet per klant. De week wordt afgeleid uit de datum in de bestandsnaam.</p>
+            </>
           )}
           {importType === 'brincr' && (
             <p>Upload <code className="text-xs bg-bg px-1 rounded">export_statistics</code> bestanden van het Brincr Portaal.</p>

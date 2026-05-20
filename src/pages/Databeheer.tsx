@@ -7,11 +7,13 @@ import ChannelPill from '../components/ui/ChannelPill';
 import { Database, Download, Trash2, RotateCcw, Search, FileSpreadsheet } from 'lucide-react';
 
 export default function Databeheer() {
-  const { allData, userData, aliases, platformConfig, removeImport, setAlias, clearAlias, clearAllAliases } = useAppStore();
+  const { allData, userData, aliases, platformConfig, removeImport, removeChannel, setAlias, clearAlias, clearAllAliases } = useAppStore();
   const data = allData();
 
   const [search, setSearch] = useState('');
   const [imports, setImports] = useState<ImportBatch[]>([]);
+
+  const shopifyRowCount = useMemo(() => data.filter((r) => r.ch === 'Shopify').length, [data]);
 
   useEffect(() => {
     fetchImports().then(setImports);
@@ -112,12 +114,26 @@ export default function Databeheer() {
           <span>Geïmporteerde rijen: <strong className="text-dark">{userData.length}</strong></span>
           <span>Productnamen (aliases): <strong className="text-dark">{Object.keys(aliases).length}</strong></span>
         </div>
-        <button
-          onClick={handleExportBackup}
-          className="flex items-center gap-2 px-3 py-2 bg-bg text-dark/60 rounded-lg hover:bg-bg4 transition text-sm"
-        >
-          <Download size={14} /> Exporteer back-up
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleExportBackup}
+            className="flex items-center gap-2 px-3 py-2 bg-bg text-dark/60 rounded-lg hover:bg-bg4 transition text-sm"
+          >
+            <Download size={14} /> Exporteer back-up
+          </button>
+          {shopifyRowCount > 0 && (
+            <button
+              onClick={() => {
+                if (confirm(`Weet je zeker dat je alle ${shopifyRowCount} Shopify-rijen wilt verwijderen?`)) {
+                  removeChannel('Shopify');
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger rounded-lg hover:bg-danger/20 transition text-sm"
+            >
+              <Trash2 size={14} /> Verwijder alle Shopify orders ({shopifyRowCount})
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Section 2: Uploaded files management */}

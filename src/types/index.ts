@@ -36,6 +36,7 @@ export interface AppActions {
   importFiles: (files: { filename: string; rows: DataRow[] }[]) => Promise<void>;
   removeImport: (id: string) => Promise<void>;
   removeUserCombo: (week: string, market: 'NL' | 'BE') => Promise<void> | void;
+  removeChannel: (channel: string) => Promise<void> | void;
   setAlias: (orig: string, alias: string) => void;
   clearAlias: (orig: string) => void;
   clearAllAliases: () => void;

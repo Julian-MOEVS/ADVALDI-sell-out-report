@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
 import { catalogDisplayName, setDynamicCatalog, setProductLinks, setCatalogAliases } from '../lib/catalog';
-import { fetchAllRows, insertRows, deleteCombo, fetchCatalog, fetchProductLinks, createImport, deleteImport, fetchCatalogAliases } from '../lib/supabase';
+import { fetchAllRows, insertRows, deleteCombo, deleteChannel, fetchCatalog, fetchProductLinks, createImport, deleteImport, fetchCatalogAliases } from '../lib/supabase';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -62,6 +62,18 @@ export const useAppStore = create<AppState & AppActions>()(
         } else {
           set((s) => ({
             userData: s.userData.filter((r) => !(r.w === week && r.rg === market)),
+          }));
+        }
+      },
+
+      removeChannel: async (channel: string) => {
+        const ok = await deleteChannel(channel);
+        if (ok) {
+          const fresh = await fetchAllRows();
+          set({ userData: fresh });
+        } else {
+          set((s) => ({
+            userData: s.userData.filter((r) => r.ch !== channel),
           }));
         }
       },
