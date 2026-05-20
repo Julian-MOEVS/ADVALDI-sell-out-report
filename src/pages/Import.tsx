@@ -85,7 +85,7 @@ export default function Import() {
         let result: { rows: DataRow[]; market: 'NL' | 'BE' };
         switch (importType) {
           case 'shopify':
-            result = await parseExportStatistics(file, 'Shopify', market);
+            result = await parseExportStatistics(file, 'Shopify - D2C', market);
             break;
           case 'brincr':
             result = await parseExportStatistics(file, 'Brincr', market);
@@ -289,7 +289,7 @@ export default function Import() {
           {importType === 'shopify' && (
             <>
               <p>Upload <code className="text-xs bg-bg px-1 rounded">export_statistics</code> bestanden van Shopify (kolommen: Artikelnummer, Omschrijving, Producten, ...).</p>
-              <p className="mt-1">De kolom <strong>Producten</strong> wordt geteld als het aantal verkochte producten. Alle rijen worden onder kanaal <strong>Shopify</strong> opgeslagen — niet per klant. De week wordt afgeleid uit de datum in de bestandsnaam.</p>
+              <p className="mt-1">Alle orders worden onder kanaal <strong>Shopify - D2C</strong> opgeslagen (niet per klant). De week wordt per order bepaald op basis van de <strong>Orderdatum</strong>; de kolom <strong>Aantal producten</strong> telt als verkocht aantal.</p>
             </>
           )}
           {importType === 'brincr' && (

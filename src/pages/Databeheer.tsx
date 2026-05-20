@@ -13,7 +13,10 @@ export default function Databeheer() {
   const [search, setSearch] = useState('');
   const [imports, setImports] = useState<ImportBatch[]>([]);
 
-  const shopifyRowCount = useMemo(() => data.filter((r) => r.ch === 'Shopify').length, [data]);
+  const shopifyRowCount = useMemo(
+    () => data.filter((r) => r.ch === 'Shopify' || r.ch === 'Shopify - D2C').length,
+    [data]
+  );
 
   useEffect(() => {
     fetchImports().then(setImports);
@@ -123,9 +126,10 @@ export default function Databeheer() {
           </button>
           {shopifyRowCount > 0 && (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (confirm(`Weet je zeker dat je alle ${shopifyRowCount} Shopify-rijen wilt verwijderen?`)) {
-                  removeChannel('Shopify');
+                  await removeChannel('Shopify');
+                  await removeChannel('Shopify - D2C');
                 }
               }}
               className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger rounded-lg hover:bg-danger/20 transition text-sm"

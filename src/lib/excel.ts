@@ -169,7 +169,7 @@ function retailerAndChannel(r: DataRow): {
   if (ch === 'MM-BE') return { retailer: 'MediaMarkt Belgium', channel: 'Big Box', country: 'Belgium', kind: 'total' };
   if (ch === 'Vanden Borre') return { retailer: 'Vanden Borre', channel: 'Big Box', country: 'Belgium', kind: 'total' };
   if (ch === 'FNAC') return { retailer: 'FNAC', channel: 'Big Box', country: 'Belgium', kind: 'total' };
-  if (ch === 'Shopify') return { retailer: 'Shopify', channel: 'D2C - Pure', country, kind: 'online' };
+  if (ch === 'Shopify' || ch === 'Shopify - D2C') return { retailer: 'Shopify - D2C', channel: 'D2C - Pure', country, kind: 'online' };
   if (ch === 'Brincr') return { retailer: r.st || 'Independent', channel: 'Independent ', country, kind: 'instore' };
   return { retailer: ch || r.st || '—', channel: 'Online', country, kind: 'total' };
 }
@@ -239,7 +239,7 @@ function buildSellOutSheet(
     if (r === 'MediaMarkt Netherlands') return 2;
     if (r === 'MediaMarkt Luxembourg') return 3;
     if (r === 'MediaMarkt Belgium') return 4;
-    if (r === 'Shopify') return 5;
+    if (r === 'Shopify - D2C' || r === 'Shopify') return 5;
     return 6;
   };
 
@@ -447,9 +447,10 @@ export function parseExportStatistics(
         const colAantal = findCol(headers, 'Aantal producten');
         const colOrderDatum = findCol(headers, 'Orderdatum');
 
-        // Shopify wordt altijd geaggregeerd op product-niveau onder één kanaal "Shopify".
-        // Per-klant detail wordt genegeerd, ongeacht of het bestand Ordernummer/Orderdatum bevat.
-        const hasOrderDetails = channel !== 'Shopify' && colOrderNr >= 0 && colOrderDatum >= 0;
+        const hasOrderDetails = colOrderNr >= 0 && colOrderDatum >= 0;
+        // Voor Shopify worden alle orders onder één kanaal/winkel gegroepeerd ("Shopify - D2C"),
+        // maar de Orderdatum wordt wel per regel gebruikt om de juiste week te bepalen.
+        const isShopify = channel.toLowerCase().startsWith('shopify');
         const rows: DataRow[] = [];
 
         if (hasOrderDetails) {
@@ -479,8 +480,9 @@ export function parseExportStatistics(
             rows.push({
               w: week, rg: market, mfr: 'Pure Electric', pg: '',
               an: currentOmschr, ean: '', sku: currentSku,
-              ch: channel, st: bedrijf,
-              sl: bedrijf ? `${channel} / ${bedrijf}` : channel,
+              ch: channel,
+              st: isShopify ? channel : bedrijf,
+              sl: isShopify ? channel : (bedrijf ? `${channel} / ${bedrijf}` : channel),
               p: 0, s: aantal, k: 0,
             });
           }
