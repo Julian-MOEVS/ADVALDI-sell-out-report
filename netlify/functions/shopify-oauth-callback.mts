@@ -94,7 +94,7 @@ export default async (req: Request, _ctx: Context) => {
   }
 
   // Redirect naar app met success melding
-  const appUrl = Netlify.env.get('URL') || 'https://advaldi-sell-out-report.netlify.app';
+  const appUrl = Netlify.env.get('URL') || 'https://advaldi-sell-out.netlify.app';
   return Response.redirect(`${appUrl}/?shopify_connected=${encodeURIComponent(shop)}`, 302);
 };
 
