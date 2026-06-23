@@ -16,6 +16,14 @@ interface ShopifyLineItem {
   quantity: number;
 }
 
+function normalizeVendor(raw: string): string {
+  const v = (raw || '').trim();
+  if (!v) return 'Pure Electric';
+  // Alle Pure-varianten samenvoegen (Pure, Pure Electric, Pure Electric Benelux, etc.)
+  if (v.toLowerCase().includes('pure')) return 'Pure Electric';
+  return v;
+}
+
 function dateToISOWeek(d: Date): string {
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dayNum = date.getUTCDay() || 7;
@@ -62,7 +70,7 @@ export default function Shopify() {
       const rows: DataRow[] = items.map((item) => ({
         w: dateToISOWeek(new Date(item.created_at)),
         rg: 'NL',
-        mfr: item.vendor || 'Pure Electric',
+        mfr: normalizeVendor(item.vendor),
         pg: '',
         an: item.name,
         ean: item.barcode || '',
