@@ -1,4 +1,5 @@
 import type { Context } from '@netlify/functions';
+import { createClient } from '@supabase/supabase-js';
 
 interface LineItem {
   order_id: string;
@@ -29,12 +30,12 @@ interface ShopifyLineItem {
 }
 
 export default async (req: Request, _ctx: Context) => {
-  const shop = Netlify.env.get('SHOPIFY_SHOP');
-  const token = Netlify.env.get('SHOPIFY_ADMIN_TOKEN');
+  const supabaseUrl = Netlify.env.get('SUPABASE_URL') || 'https://comqpyhbdsqifheoegjk.supabase.co';
+  const supabaseServiceKey = Netlify.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-  if (!shop || !token) {
+  if (!supabaseServiceKey) {
     return new Response(
-      JSON.stringify({ error: 'Shopify credentials niet geconfigureerd. Stel SHOPIFY_SHOP en SHOPIFY_ADMIN_TOKEN in als Netlify environment variables.' }),
+      JSON.stringify({ error: 'Server is niet correct geconfigureerd (SUPABASE_SERVICE_ROLE_KEY ontbreekt).' }),
       { status: 500, headers: { 'content-type': 'application/json' } }
     );
   }
@@ -42,6 +43,30 @@ export default async (req: Request, _ctx: Context) => {
   const url = new URL(req.url);
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
+  const shopParam = url.searchParams.get('shop');
+
+  // Haal opgeslagen token op
+  const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
+  let query = supabase.from('shopify_tokens').select('shop, access_token').limit(1);
+  if (shopParam) query = query.eq('shop', shopParam);
+  const { data: tokenRows, error: tokenErr } = await query;
+
+  if (tokenErr) {
+    return new Response(
+      JSON.stringify({ error: 'Kon Shopify token niet ophalen', detail: tokenErr.message }),
+      { status: 500, headers: { 'content-type': 'application/json' } }
+    );
+  }
+
+  if (!tokenRows || tokenRows.length === 0) {
+    return new Response(
+      JSON.stringify({ error: 'Geen Shopify-koppeling gevonden. Installeer eerst de Sell-out-report app via de install link.' }),
+      { status: 404, headers: { 'content-type': 'application/json' } }
+    );
+  }
+
+  const shop = tokenRows[0].shop;
+  const token = tokenRows[0].access_token;
 
   if (!from) {
     return new Response(
@@ -54,7 +79,7 @@ export default async (req: Request, _ctx: Context) => {
   if (to) filterParts.push(`created_at:<=${to}`);
   const queryFilter = filterParts.join(' ');
 
-  const apiUrl = `https://${shop}/admin/api/2024-10/graphql.json`;
+  const apiUrl = `https://${shop}/admin/api/2026-04/graphql.json`;
   const items: LineItem[] = [];
   let cursor: string | null = null;
 
