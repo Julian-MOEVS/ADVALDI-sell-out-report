@@ -7,10 +7,10 @@ import { createClient } from '@supabase/supabase-js';
  * Wij wisselen de code in voor een offline access token en slaan die op in Supabase.
  */
 export default async (req: Request, _ctx: Context) => {
-  const clientId = Netlify.env.get('SHOPIFY_CLIENT_ID');
-  const clientSecret = Netlify.env.get('SHOPIFY_CLIENT_SECRET');
-  const supabaseUrl = Netlify.env.get('SUPABASE_URL') || 'https://comqpyhbdsqifheoegjk.supabase.co';
-  const supabaseServiceKey = Netlify.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const clientId = process.env.SHOPIFY_CLIENT_ID;
+  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+  const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!clientId || !clientSecret) {
     return new Response(
@@ -94,7 +94,7 @@ export default async (req: Request, _ctx: Context) => {
   }
 
   // Redirect naar app met success melding
-  const appUrl = Netlify.env.get('URL') || 'https://advaldi-sell-out.netlify.app';
+  const appUrl = process.env.URL || 'https://advaldi-sell-out.netlify.app';
   return Response.redirect(`${appUrl}/?shopify_connected=${encodeURIComponent(shop)}`, 302);
 };
 

@@ -30,8 +30,8 @@ interface ShopifyLineItem {
 }
 
 export default async (req: Request, _ctx: Context) => {
-  const supabaseUrl = Netlify.env.get('SUPABASE_URL') || 'https://comqpyhbdsqifheoegjk.supabase.co';
-  const supabaseServiceKey = Netlify.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseServiceKey) {
     return new Response(
