@@ -88,11 +88,20 @@ export default function WeekView() {
       .sort((a, b) => b.sales - a.sales);
   }, [rows]);
 
-  // Brand breakdown — with resolved product names
+  // Brand breakdown — with resolved product names. Groep case/whitespace-insensitief op merk
+  // zodat 'Pure Electric' / 'PURE ELECTRIC' / ' Pure Electric ' in één blok belanden.
   const brandGroups = useMemo(() => {
-    const g = groupBy(rows, (r) => r.mfr);
+    const g = groupBy(rows, (r) => (r.mfr || '').trim().toLowerCase());
     return Object.entries(g)
-      .map(([brand, bRows]) => {
+      .map(([, bRows]) => {
+        // Gebruik meest-voorkomende casing als display
+        const labelCounts: Record<string, number> = {};
+        for (const r of bRows) {
+          const label = (r.mfr || '').trim() || 'Onbekend merk';
+          labelCounts[label] = (labelCounts[label] || 0) + 1;
+        }
+        const brand = Object.entries(labelCounts).sort((a, b) => b[1] - a[1])[0][0];
+
         const sales = bRows.reduce((a, r) => a + r.s, 0);
         const stock = stockForArticle(bRows);
         const articles = groupBy(bRows, resolveProductKey);
