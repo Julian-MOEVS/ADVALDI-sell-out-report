@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { deleteChannelWeeks, insertRows } from '../lib/supabase';
-import { fetchAllRows } from '../lib/supabase';
+import { deleteChannelWeeks, insertRows, fetchAllRows } from '../lib/supabase';
 import type { DataRow } from '../types';
 import { ShoppingBag, Info, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 
@@ -24,7 +23,8 @@ function normalizeVendor(raw: string): string {
   return v;
 }
 
-function dateToISOWeek(d: Date): string {
+function dateToISOWeek(d: Date): string | null {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return null;
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const dayNum = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + 4 - dayNum);
@@ -50,7 +50,14 @@ export default function Shopify() {
       if (to) params.set('to', to);
 
       const res = await fetch(`/api/shopify-orders?${params.toString()}`);
-      const payload = await res.json();
+      let payload: { error?: string; items?: ShopifyLineItem[] };
+      try {
+        payload = await res.json();
+      } catch {
+        setStatus('error');
+        setMessage(`Server returned non-JSON (HTTP ${res.status}). Mogelijk timeout of crash in Netlify Function.`);
+        return;
+      }
 
       if (!res.ok) {
         setStatus('error');
@@ -67,40 +74,85 @@ export default function Shopify() {
 
       setMessage(`${items.length} regels ontvangen, omzetten en opslaan...`);
 
-      const rows: DataRow[] = items.map((item) => ({
-        w: dateToISOWeek(new Date(item.created_at)),
-        rg: 'NL',
-        mfr: normalizeVendor(item.vendor),
-        pg: '',
-        an: item.name,
-        ean: item.barcode || '',
-        sku: item.sku || '',
-        ch: 'Shopify - D2C',
-        st: 'Shopify - D2C',
-        sl: 'Shopify - D2C',
-        p: 0,
-        s: item.quantity,
-        k: 0,
-      }));
+      // Map items met validatie. Skipped items worden geteld zodat de gebruiker weet dat er iets weggevallen is.
+      const skipped: { reason: string; sample: string }[] = [];
+      const rows: DataRow[] = [];
+      for (const item of items) {
+        const week = dateToISOWeek(new Date(item.created_at));
+        if (!week) {
+          skipped.push({ reason: 'ongeldige Orderdatum', sample: `${item.order_number} ${item.created_at}` });
+          continue;
+        }
+        const name = (item.name || '').trim();
+        if (!name) {
+          skipped.push({ reason: 'lege productnaam', sample: `${item.order_number} sku=${item.sku}` });
+          continue;
+        }
+        const qty = Number(item.quantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          skipped.push({ reason: 'ongeldige hoeveelheid', sample: `${item.order_number} qty=${item.quantity}` });
+          continue;
+        }
+        rows.push({
+          w: week,
+          rg: 'NL',
+          mfr: normalizeVendor(item.vendor),
+          pg: '',
+          an: name,
+          ean: item.barcode || '',
+          sku: item.sku || '',
+          ch: 'Shopify - D2C',
+          st: 'Shopify - D2C',
+          sl: 'Shopify - D2C',
+          p: 0,
+          s: qty,
+          k: 0,
+        });
+      }
+
+      if (rows.length === 0) {
+        setStatus('error');
+        setMessage(`Alle ${items.length} regels zijn afgekeurd: ${skipped.slice(0, 3).map((s) => s.reason).join(', ')}`);
+        return;
+      }
 
       const uniqueWeeks = [...new Set(rows.map((r) => r.w))].sort();
       const uniqueOrders = new Set(items.map((i) => i.order_id)).size;
       const totalSales = rows.reduce((a, r) => a + r.s, 0);
 
-      // Replace mode: verwijder bestaande Shopify - D2C rijen voor deze weken
-      await deleteChannelWeeks('Shopify - D2C', uniqueWeeks);
+      // Replace-mode: verwijder eerst bestaande Shopify - D2C rijen voor deze weken.
+      // ABORT als delete faalt, anders krijgen we dubbele data.
+      const deleteOk = await deleteChannelWeeks('Shopify - D2C', uniqueWeeks);
+      if (!deleteOk) {
+        setStatus('error');
+        setMessage('Verwijderen van bestaande rijen mislukt. Sync afgebroken om dubbele data te voorkomen. Check je internet/Supabase status en probeer opnieuw.');
+        return;
+      }
 
       const result = await insertRows(rows);
       if (!result.success) {
         setStatus('error');
-        setMessage('Opslaan in database is mislukt.');
+        setMessage(
+          `Opslaan mislukt: ${result.count} van ${rows.length} rijen zijn ingevoegd voordat het stuk ging. ` +
+          `De DB is nu in inconsistente staat — run nogmaals (replace-mode pakt het in één keer op).`
+        );
         return;
       }
 
-      // Vernieuw store
-      const fresh = await fetchAllRows();
-      useAppStore.setState({ userData: fresh });
+      // Vernieuw store met verse data uit DB
+      try {
+        const fresh = await fetchAllRows();
+        useAppStore.setState({ userData: fresh });
+      } catch (e) {
+        // Sync was OK, alleen UI-refresh faalde: melden maar niet als hard error
+        setStatus('success');
+        setMessage(`Sync voltooid (${rows.length} rijen). UI-refresh faalde, refresh de pagina handmatig. (${e instanceof Error ? e.message : 'fout'})`);
+        return;
+      }
 
+      const skippedMsg = skipped.length > 0
+        ? ` ${skipped.length} regel(s) overgeslagen (${[...new Set(skipped.map((s) => s.reason))].join(', ')}).`
+        : '';
       setStats({
         orders: uniqueOrders,
         lineItems: items.length,
@@ -108,7 +160,7 @@ export default function Shopify() {
         weeks: uniqueWeeks.length,
       });
       setStatus('success');
-      setMessage('Sync voltooid!');
+      setMessage(`Sync voltooid!${skippedMsg}`);
     } catch (err) {
       setStatus('error');
       setMessage(err instanceof Error ? err.message : 'Onbekende fout');
@@ -126,11 +178,13 @@ export default function Shopify() {
         <Info size={18} className="text-info shrink-0 mt-0.5" />
         <div className="text-sm text-dark/70 space-y-2">
           <p>
-            Deze sync haalt orders rechtstreeks op uit de Shopify Admin API via een Netlify Function.
-            Credentials staan veilig server-side als environment variables (<code className="text-xs bg-bg px-1 rounded">SHOPIFY_SHOP</code> + <code className="text-xs bg-bg px-1 rounded">SHOPIFY_ADMIN_TOKEN</code>).
+            Sync haalt orders direct op uit Shopify via OAuth. Credentials (Client ID/Secret + access token) staan veilig in Netlify env vars en Supabase, niet in de browser.
           </p>
           <p>
-            <strong>Replace-mode:</strong> bestaande "Shopify - D2C" rijen voor de gesynchroniseerde weken worden eerst verwijderd, daarna opnieuw ingeladen. Orders worden geplaatst in de ISO-week van hun <code className="text-xs bg-bg px-1 rounded">created_at</code>.
+            <strong>Replace-mode:</strong> bestaande "Shopify - D2C" rijen voor de gesynchroniseerde weken worden eerst verwijderd, daarna opnieuw ingeladen. Orders krijgen de ISO-week van hun <code className="text-xs bg-bg px-1 rounded">created_at</code>.
+          </p>
+          <p>
+            <strong>Beperking zonder <code className="text-xs bg-bg px-1 rounded">read_all_orders</code> scope:</strong> Shopify levert alleen orders van de laatste 60 dagen. Vraag die scope aan in Partners voor volledige historie.
           </p>
         </div>
       </div>
@@ -191,19 +245,15 @@ export default function Shopify() {
 
       <details className="bg-white border border-bg4 rounded-3xl shadow-sm p-5">
         <summary className="cursor-pointer text-sm font-medium text-dark/60">
-          Setup-instructies (eenmalig per environment)
+          Setup-instructies (Partner App OAuth, eenmalig)
         </summary>
         <ol className="text-sm text-dark/70 space-y-2 mt-3 list-decimal list-inside">
-          <li>In Shopify Admin: <strong>Settings → Apps and sales channels → Develop apps</strong> → maak een Custom App aan.</li>
-          <li>Configuration → <strong>Admin API integration</strong> → scopes: <code className="text-xs bg-bg px-1 rounded">read_orders</code>, <code className="text-xs bg-bg px-1 rounded">read_products</code> → Save.</li>
-          <li>Tabblad API credentials → <strong>Install app</strong> → kopieer het <strong>Admin API access token</strong> (begint met <code>shpat_</code>).</li>
-          <li>In Netlify dashboard → Site settings → Environment variables: voeg toe:
-            <ul className="list-disc list-inside ml-4 mt-1">
-              <li><code className="text-xs bg-bg px-1 rounded">SHOPIFY_SHOP</code> = <code>jouw-shop.myshopify.com</code></li>
-              <li><code className="text-xs bg-bg px-1 rounded">SHOPIFY_ADMIN_TOKEN</code> = <code>shpat_...</code></li>
-            </ul>
-          </li>
-          <li>Trigger een nieuwe deploy zodat de env vars geladen worden.</li>
+          <li>Maak een Shopify Partners account op <code className="text-xs bg-bg px-1 rounded">partners.shopify.com</code>.</li>
+          <li>Apps → Create app → naam <code className="text-xs bg-bg px-1 rounded">Sell-out-report</code>. Scopes: <code className="text-xs bg-bg px-1 rounded">read_orders</code>, <code className="text-xs bg-bg px-1 rounded">read_all_orders</code>, <code className="text-xs bg-bg px-1 rounded">read_products</code>, <code className="text-xs bg-bg px-1 rounded">read_inventory</code>.</li>
+          <li>App URL: <code className="text-xs bg-bg px-1 rounded">https://advaldi-sell-out.netlify.app</code>. Redirect URL: <code className="text-xs bg-bg px-1 rounded">https://advaldi-sell-out.netlify.app/api/shopify-oauth-callback</code>. Embedded: off.</li>
+          <li>Distribution → Custom distribution → target shop URL = jouw <code>.myshopify.com</code>.</li>
+          <li>Netlify env vars: <code className="text-xs bg-bg px-1 rounded">SHOPIFY_CLIENT_ID</code>, <code className="text-xs bg-bg px-1 rounded">SHOPIFY_CLIENT_SECRET</code>, <code className="text-xs bg-bg px-1 rounded">SUPABASE_SERVICE_ROLE_KEY</code>. Trigger redeploy.</li>
+          <li>Klik de install-link van Partners → goedkeuren → token wordt automatisch opgeslagen in Supabase tabel <code>shopify_tokens</code>.</li>
         </ol>
       </details>
     </div>

@@ -150,7 +150,13 @@ export default function Import() {
     }
 
     // Save data per file (with import tracking)
-    await importFiles(parsedPerFile);
+    try {
+      await importFiles(parsedPerFile);
+    } catch (err) {
+      setStatus(`Import-fout: ${err instanceof Error ? err.message : 'onbekend'}`);
+      setSaving(false);
+      return;
+    }
     (setParsed([]), setParsedPerFile([]));
     setParsedPerFile([]);
     setStatus('');

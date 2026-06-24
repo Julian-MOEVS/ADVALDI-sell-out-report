@@ -8,7 +8,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const TABLE = 'sell_out_data';
 
-/** Fetch all rows from Supabase */
+/** Fetch all rows from Supabase. Gooit een Error bij fout zodat callers het kunnen tonen. */
 export async function fetchAllRows(): Promise<DataRow[]> {
   const rows: DataRow[] = [];
   let from = 0;
@@ -18,11 +18,15 @@ export async function fetchAllRows(): Promise<DataRow[]> {
     const { data, error } = await supabase
       .from(TABLE)
       .select('w, rg, mfr, pg, an, ean, sku, ch, st, sl, p, s, k')
+      // Stabiele volgorde voorkomt gemiste/dubbele rijen over pagina-grenzen
+      .order('w', { ascending: true })
+      .order('ch', { ascending: true })
+      .order('an', { ascending: true })
       .range(from, from + pageSize - 1);
 
     if (error) {
       console.error('Supabase fetch error:', error);
-      break;
+      throw new Error(`Supabase fetch faalde: ${error.message}`);
     }
 
     if (!data || data.length === 0) break;
@@ -34,33 +38,39 @@ export async function fetchAllRows(): Promise<DataRow[]> {
   return rows;
 }
 
-/** Insert rows into Supabase (batched in chunks of 500), optionally tagged with import_id */
-export async function insertRows(rows: DataRow[], importId?: string): Promise<{ success: boolean; count: number }> {
+/** Insert rows into Supabase (batched in chunks of 500), optionally tagged with import_id.
+ * Coalesce alle string-velden naar '' en numerieke naar 0 om NOT NULL constraint violations te voorkomen.
+ * Bij batch-failure: returnt success=false met count = aantal reeds geinserte rijen vóór de fout. */
+export async function insertRows(
+  rows: DataRow[],
+  importId?: string
+): Promise<{ success: boolean; count: number; error?: string }> {
+  if (rows.length === 0) return { success: true, count: 0 };
   const BATCH = 500;
   let inserted = 0;
 
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH).map((r) => ({
-      w: r.w,
+      w: r.w || '',
       rg: r.rg,
-      mfr: r.mfr,
-      pg: r.pg,
-      an: r.an,
-      ean: r.ean,
+      mfr: r.mfr || '',
+      pg: r.pg || '',
+      an: r.an || '',
+      ean: r.ean || '',
       sku: r.sku || '',
-      ch: r.ch,
-      st: r.st,
-      sl: r.sl,
-      p: r.p,
-      s: r.s,
-      k: r.k,
+      ch: r.ch || '',
+      st: r.st || '',
+      sl: r.sl || '',
+      p: Number.isFinite(r.p) ? r.p : 0,
+      s: Number.isFinite(r.s) ? r.s : 0,
+      k: Number.isFinite(r.k) ? r.k : 0,
       ...(importId ? { import_id: importId } : {}),
     }));
 
     const { error } = await supabase.from(TABLE).insert(batch);
     if (error) {
-      console.error('Supabase insert error:', error);
-      return { success: false, count: inserted };
+      console.error(`Supabase insert error op batch ${i / BATCH + 1}:`, error);
+      return { success: false, count: inserted, error: error.message };
     }
     inserted += batch.length;
   }
@@ -97,20 +107,68 @@ export async function deleteChannel(channel: string): Promise<boolean> {
   return true;
 }
 
-/** Delete rows for a channel matching any of the given ISO weeks. */
+/** Delete rows for a channel matching any of the given ISO weeks.
+ * Filtert ongeldige weken (alleen YYYYWW pattern). Batched op 500 weken per call. */
 export async function deleteChannelWeeks(channel: string, weeks: string[]): Promise<boolean> {
-  if (weeks.length === 0) return true;
-  const { error } = await supabase
-    .from(TABLE)
-    .delete()
-    .eq('ch', channel)
-    .in('w', weeks);
-
-  if (error) {
-    console.error('Supabase delete channel+weeks error:', error);
-    return false;
+  const valid = weeks.filter((w) => /^\d{6}$/.test(w));
+  if (valid.length === 0) return true;
+  const BATCH = 500;
+  for (let i = 0; i < valid.length; i += BATCH) {
+    const slice = valid.slice(i, i + BATCH);
+    const { error } = await supabase
+      .from(TABLE)
+      .delete()
+      .eq('ch', channel)
+      .in('w', slice);
+    if (error) {
+      console.error('Supabase delete channel+weeks error:', error);
+      return false;
+    }
   }
   return true;
+}
+
+/** Cleanup: verwijder rijen met ongeldige week (NaNNaN of niet YYYYWW). */
+export async function deleteInvalidWeekRows(): Promise<{ deleted: number; success: boolean }> {
+  const { count, error } = await supabase
+    .from(TABLE)
+    .delete({ count: 'exact' })
+    .not('w', '~', '^[0-9]{6}$');
+  if (error) {
+    console.error('Cleanup invalid-week rows error:', error);
+    return { deleted: 0, success: false };
+  }
+  return { deleted: count || 0, success: true };
+}
+
+/** Cleanup: normaliseer alle Pure-vendor varianten voor een specifiek kanaal naar één canonieke naam. */
+export async function normalizeChannelBrand(
+  channel: string,
+  fromPattern: string,
+  toBrand: string
+): Promise<{ updated: number; success: boolean }> {
+  // RPC zou efficiënter zijn, maar voor de hoeveelheid rijen die we verwachten doet een select+update OK.
+  const { data: candidates, error: selErr } = await supabase
+    .from(TABLE)
+    .select('w, ch, an, mfr')
+    .eq('ch', channel)
+    .ilike('mfr', fromPattern);
+  if (selErr) {
+    console.error('normalizeChannelBrand select error:', selErr);
+    return { updated: 0, success: false };
+  }
+  if (!candidates || candidates.length === 0) return { updated: 0, success: true };
+
+  const { error: updErr, count } = await supabase
+    .from(TABLE)
+    .update({ mfr: toBrand }, { count: 'exact' })
+    .eq('ch', channel)
+    .ilike('mfr', fromPattern);
+  if (updErr) {
+    console.error('normalizeChannelBrand update error:', updErr);
+    return { updated: 0, success: false };
+  }
+  return { updated: count || candidates.length, success: true };
 }
 
 /* ── Catalog aliases (extra SKUs/EANs per catalog product) ── */

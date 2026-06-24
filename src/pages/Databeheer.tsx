@@ -2,9 +2,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { EMBEDDED_DATA } from '../lib/data';
 import { matchToCatalog } from '../lib/catalog';
-import { fetchImports, type ImportBatch } from '../lib/supabase';
+import { fetchImports, deleteInvalidWeekRows, normalizeChannelBrand, fetchAllRows, type ImportBatch } from '../lib/supabase';
 import ChannelPill from '../components/ui/ChannelPill';
-import { Database, Download, Trash2, RotateCcw, Search, FileSpreadsheet } from 'lucide-react';
+import { Database, Download, Trash2, RotateCcw, Search, FileSpreadsheet, Wrench } from 'lucide-react';
 
 export default function Databeheer() {
   const { allData, userData, aliases, platformConfig, removeImport, removeChannel, setAlias, clearAlias, clearAllAliases } = useAppStore();
@@ -17,6 +17,18 @@ export default function Databeheer() {
     () => data.filter((r) => r.ch === 'Shopify' || r.ch === 'Shopify - D2C').length,
     [data]
   );
+
+  const invalidWeekCount = useMemo(
+    () => data.filter((r) => !/^\d{6}$/.test(r.w)).length,
+    [data]
+  );
+
+  const pureVariantCount = useMemo(
+    () => data.filter((r) => (r.ch === 'Shopify' || r.ch === 'Shopify - D2C') && /pure/i.test(r.mfr) && r.mfr !== 'Pure Electric').length,
+    [data]
+  );
+
+  const [cleanupStatus, setCleanupStatus] = useState<string>('');
 
   useEffect(() => {
     fetchImports().then(setImports);
@@ -138,6 +150,64 @@ export default function Databeheer() {
             </button>
           )}
         </div>
+
+        {/* Cleanup tools */}
+        {(invalidWeekCount > 0 || pureVariantCount > 0) && (
+          <div className="mt-4 pt-4 border-t border-bg4">
+            <h4 className="text-xs font-medium text-dark/50 uppercase tracking-wide mb-2 flex items-center gap-1">
+              <Wrench size={12} /> Cleanup tools
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {invalidWeekCount > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!confirm(`${invalidWeekCount} rijen met ongeldige week (NaNNaN of niet YYYYWW) verwijderen?`)) return;
+                    setCleanupStatus('Verwijderen...');
+                    const res = await deleteInvalidWeekRows();
+                    if (res.success) {
+                      try {
+                        const fresh = await fetchAllRows();
+                        useAppStore.setState({ userData: fresh });
+                      } catch {}
+                      setCleanupStatus(`${res.deleted} rij(en) verwijderd.`);
+                    } else {
+                      setCleanupStatus('Cleanup faalde. Check console.');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-warning/10 text-warning rounded-lg hover:bg-warning/20 transition text-sm"
+                >
+                  <Wrench size={14} /> Verwijder {invalidWeekCount} ongeldige-week rijen
+                </button>
+              )}
+              {pureVariantCount > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!confirm(`${pureVariantCount} Shopify-rijen met "Pure"-variant (niet 'Pure Electric') normaliseren naar 'Pure Electric'?`)) return;
+                    setCleanupStatus('Normaliseren...');
+                    const r1 = await normalizeChannelBrand('Shopify', '%pure%', 'Pure Electric');
+                    const r2 = await normalizeChannelBrand('Shopify - D2C', '%pure%', 'Pure Electric');
+                    const total = r1.updated + r2.updated;
+                    if (r1.success && r2.success) {
+                      try {
+                        const fresh = await fetchAllRows();
+                        useAppStore.setState({ userData: fresh });
+                      } catch {}
+                      setCleanupStatus(`${total} rij(en) genormaliseerd naar 'Pure Electric'.`);
+                    } else {
+                      setCleanupStatus('Normalisatie deels gefaald. Check console.');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-info/10 text-info rounded-lg hover:bg-info/20 transition text-sm"
+                >
+                  <Wrench size={14} /> Normaliseer {pureVariantCount} Pure-variant(en)
+                </button>
+              )}
+            </div>
+            {cleanupStatus && (
+              <p className="mt-2 text-xs text-dark/60">{cleanupStatus}</p>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Section 2: Uploaded files management */}

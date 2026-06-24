@@ -19,15 +19,21 @@ export const useAppStore = create<AppState & AppActions>()(
 
       addUserData: async (rows: DataRow[]) => {
         const result = await insertRows(rows);
-        if (result.success) {
+        if (!result.success) {
+          // GEEN lokale fallback — die zou een schijn-import creëren die bij refresh weg is.
+          throw new Error(`Opslaan in database mislukt: ${result.error || 'onbekende fout'} (${result.count}/${rows.length} ingevoerd)`);
+        }
+        try {
           const fresh = await fetchAllRows();
           set({ userData: fresh });
-        } else {
-          set((s) => ({ userData: [...s.userData, ...rows] }));
+        } catch (e) {
+          console.error('fetchAllRows na addUserData faalde:', e);
+          // Data IS opgeslagen, alleen UI-refresh faalde
         }
       },
 
       importFiles: async (files: { filename: string; rows: DataRow[] }[]) => {
+        const failures: { filename: string; error: string }[] = [];
         for (const f of files) {
           if (f.rows.length === 0) continue;
           const channel = f.rows[0].ch || null;
@@ -40,10 +46,22 @@ export const useAppStore = create<AppState & AppActions>()(
             weeks,
             row_count: f.rows.length,
           });
-          await insertRows(f.rows, importId || undefined);
+          const result = await insertRows(f.rows, importId || undefined);
+          if (!result.success) {
+            failures.push({ filename: f.filename, error: result.error || 'onbekende fout' });
+          }
         }
-        const fresh = await fetchAllRows();
-        set({ userData: fresh });
+        try {
+          const fresh = await fetchAllRows();
+          set({ userData: fresh });
+        } catch (e) {
+          console.error('fetchAllRows na importFiles faalde:', e);
+        }
+        if (failures.length > 0) {
+          throw new Error(
+            `Import van ${failures.length} bestand(en) mislukt: ${failures.map((f) => `${f.filename} (${f.error})`).join('; ')}`
+          );
+        }
       },
 
       removeImport: async (id: string) => {
@@ -114,10 +132,23 @@ export const useAppStore = create<AppState & AppActions>()(
   )
 );
 
-// Load data, catalog, links, and aliases from Supabase on app start
-Promise.all([fetchAllRows(), fetchCatalog(), fetchProductLinks(), fetchCatalogAliases()]).then(([rows, catalog, links, aliases]) => {
-  useAppStore.setState({ userData: rows });
-  setDynamicCatalog(catalog);
-  setProductLinks(links);
-  setCatalogAliases(aliases);
+// Load data, catalog, links, and aliases from Supabase on app start.
+// Settle elk endpoint apart zodat één failure niet alles blokkeert.
+Promise.allSettled([
+  fetchAllRows(),
+  fetchCatalog(),
+  fetchProductLinks(),
+  fetchCatalogAliases(),
+]).then(([rowsR, catalogR, linksR, aliasesR]) => {
+  if (rowsR.status === 'fulfilled') {
+    useAppStore.setState({ userData: rowsR.value });
+  } else {
+    console.error('fetchAllRows op startup faalde:', rowsR.reason);
+  }
+  if (catalogR.status === 'fulfilled') setDynamicCatalog(catalogR.value);
+  else console.error('fetchCatalog op startup faalde:', catalogR.reason);
+  if (linksR.status === 'fulfilled') setProductLinks(linksR.value);
+  else console.error('fetchProductLinks op startup faalde:', linksR.reason);
+  if (aliasesR.status === 'fulfilled') setCatalogAliases(aliasesR.value);
+  else console.error('fetchCatalogAliases op startup faalde:', aliasesR.reason);
 });
