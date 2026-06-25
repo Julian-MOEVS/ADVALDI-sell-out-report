@@ -113,7 +113,7 @@ export default function WeekView() {
         }));
         const withSales = articleEntries.filter((a) => a.sales > 0);
         const withoutSales = articleEntries.length - withSales.length;
-        return { brand, sales, stock, articleEntries: withSales, withoutSales, channel: bRows[0].ch };
+        return { brand, sales, stock, articleEntries: withSales, withoutSales };
       })
       .sort((a, b) => b.sales - a.sales);
   }, [rows, aliases]);
@@ -282,7 +282,6 @@ export default function WeekView() {
         {brandGroups.map((bg) => (
           <details key={bg.brand} open={bg.sales > 0} className="mb-2">
             <summary className="cursor-pointer flex items-center gap-2 py-2 px-3 bg-bg rounded-lg hover:bg-bg4 transition">
-              <ChannelPill channel={bg.channel} />
               <span className="font-medium">{bg.brand}</span>
             </summary>
             <div className="mt-1 ml-4 overflow-x-auto">
