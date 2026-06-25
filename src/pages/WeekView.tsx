@@ -284,11 +284,6 @@ export default function WeekView() {
             <summary className="cursor-pointer flex items-center gap-2 py-2 px-3 bg-bg rounded-lg hover:bg-bg4 transition">
               <ChannelPill channel={bg.channel} />
               <span className="font-medium">{bg.brand}</span>
-              <span className="ml-auto flex gap-2">
-                <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent rounded">{bg.sales} verkopen</span>
-                <span className="text-xs px-2 py-0.5 bg-info/20 text-info rounded">{bg.stock} voorraad</span>
-                <span className="text-xs text-dark/40">{bg.articleEntries.length + bg.withoutSales} artikel(en)</span>
-              </span>
             </summary>
             <div className="mt-1 ml-4 overflow-x-auto">
               <table className="w-full text-sm">
