@@ -45,7 +45,10 @@
       "Bash(curl -sS \"https://advaldi-sell-out.netlify.app/api/shopify-orders?from=2026-01-01&to=2026-06-23\" -o /tmp/api.json)",
       "Read(//tmp/**)",
       "Bash(head -c 500 /tmp/api.json)",
-      "Bash(cygpath -w /tmp/api.json)"
+      "Bash(cygpath -w /tmp/api.json)",
+      "Bash(curl -sS \"https://advaldi-sell-out.netlify.app/api/shopify-orders?from=2026-06-01&to=2026-06-23\")",
+      "Bash(node -e ' *)",
+      "Bash(curl -sS \"https://advaldi-sell-out.netlify.app/api/shopify-orders?from=2026-06-01&to=2026-06-23\" -o /tmp/orders.json)"
     ]
   }
 }

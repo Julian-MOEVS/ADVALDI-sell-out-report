@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { deleteChannelWeeks, insertRows, fetchAllRows } from '../lib/supabase';
 import type { DataRow } from '../types';
-import { ShoppingBag, Info, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ShoppingBag, Info, RefreshCw, CheckCircle, AlertTriangle, Zap } from 'lucide-react';
 
 interface ShopifyLineItem {
   order_id: string;
@@ -33,21 +33,63 @@ function dateToISOWeek(d: Date): string | null {
   return `${date.getUTCFullYear()}${String(weekNo).padStart(2, '0')}`;
 }
 
+function toYMD(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDateNL(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString('nl-NL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+interface ShopifyStatus {
+  connected: boolean;
+  shop?: string;
+  scope?: string;
+  installedAt?: string;
+  lastSyncedTo?: string | null;
+}
+
 export default function Shopify() {
   const [from, setFrom] = useState('2026-01-01');
   const [to, setTo] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [stats, setStats] = useState<{ orders: number; lineItems: number; sales: number; weeks: number } | null>(null);
+  const [shopifyStatus, setShopifyStatus] = useState<ShopifyStatus | null>(null);
 
-  const handleSync = async () => {
+  const refreshStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/shopify-status');
+      if (res.ok) {
+        const data = (await res.json()) as ShopifyStatus;
+        setShopifyStatus(data);
+      }
+    } catch {
+      // Status is informational, geen hard error
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
+
+  /**
+   * Run een sync voor een specifieke datumrange. Heeft replace-mode (delete bestaande weken eerst).
+   * Bij succes wordt last_synced_to bijgewerkt op de server.
+   */
+  const runSync = async (fromDate: string, toDate: string | undefined, label: string) => {
     setStatus('loading');
-    setMessage('Orders ophalen van Shopify...');
+    setMessage(`${label}: orders ophalen van Shopify...`);
     setStats(null);
 
     try {
-      const params = new URLSearchParams({ from });
-      if (to) params.set('to', to);
+      const params = new URLSearchParams({ from: fromDate });
+      if (toDate) params.set('to', toDate);
 
       const res = await fetch(`/api/shopify-orders?${params.toString()}`);
       let payload: { error?: string; items?: ShopifyLineItem[] };
@@ -153,6 +195,20 @@ export default function Shopify() {
       const skippedMsg = skipped.length > 0
         ? ` ${skipped.length} regel(s) overgeslagen (${[...new Set(skipped.map((s) => s.reason))].join(', ')}).`
         : '';
+
+      // Mark sync timestamp (server-side update van last_synced_to)
+      const syncedTo = toDate ? new Date(toDate + 'T23:59:59Z').toISOString() : new Date().toISOString();
+      try {
+        await fetch('/api/shopify-mark-synced', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ syncedTo }),
+        });
+        refreshStatus();
+      } catch {
+        // Mark-synced is best-effort, niet kritiek
+      }
+
       setStats({
         orders: uniqueOrders,
         lineItems: items.length,
@@ -165,6 +221,22 @@ export default function Shopify() {
       setStatus('error');
       setMessage(err instanceof Error ? err.message : 'Onbekende fout');
     }
+  };
+
+  const handleSync = () => runSync(from, to || undefined, 'Sync');
+
+  const handleAutoSync = () => {
+    if (!shopifyStatus?.lastSyncedTo) {
+      setStatus('error');
+      setMessage('Nog geen eerdere sync gevonden. Doe eerst een normale sync.');
+      return;
+    }
+    // Buffer van 1 dag terug om late orders mee te pakken
+    const last = new Date(shopifyStatus.lastSyncedTo);
+    last.setUTCDate(last.getUTCDate() - 1);
+    const autoFrom = toYMD(last);
+    const autoTo = toYMD(new Date());
+    runSync(autoFrom, autoTo, `Auto Sync (${autoFrom} → ${autoTo})`);
   };
 
   return (
@@ -189,8 +261,31 @@ export default function Shopify() {
         </div>
       </div>
 
+      {/* Auto Sync (primary action) */}
+      <div className="bg-gradient-to-br from-accent/10 to-accent-light/5 border border-accent/30 rounded-3xl p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Zap size={18} className="text-accent" />
+          <h3 className="text-sm font-medium">Auto Sync (sinds laatste sync)</h3>
+        </div>
+        <p className="text-xs text-dark/60">
+          {shopifyStatus?.lastSyncedTo ? (
+            <>Laatste sync: <strong className="text-dark">{formatDateNL(shopifyStatus.lastSyncedTo)}</strong>. Bij klik wordt vanaf 1 dag vóór die datum tot vandaag opnieuw opgehaald (replace-mode, dubbele orders kunnen niet ontstaan).</>
+          ) : (
+            <>Nog geen eerdere sync. Doe eerst hieronder een volledige sync met expliciete datums.</>
+          )}
+        </p>
+        <button
+          onClick={handleAutoSync}
+          disabled={status === 'loading' || !shopifyStatus?.lastSyncedTo}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-accent-light to-accent text-white rounded-lg hover:opacity-90 transition disabled:opacity-50 text-sm"
+        >
+          <Zap size={14} />
+          {status === 'loading' ? 'Synchroniseren...' : 'Auto Sync'}
+        </button>
+      </div>
+
       <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-5 space-y-4">
-        <h3 className="text-sm font-medium text-dark/60">Periode</h3>
+        <h3 className="text-sm font-medium text-dark/60">Handmatige sync over specifieke periode</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-dark/50 mb-1 uppercase tracking-wide">Vanaf *</label>

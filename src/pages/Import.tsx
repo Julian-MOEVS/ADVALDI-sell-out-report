@@ -10,11 +10,16 @@ import { Upload, FileSpreadsheet, Info, AlertTriangle, CheckCircle, Link2, Plus,
 
 type ImportType = 'mediamarkt' | 'shopify' | 'brincr' | 'fnac_vdb';
 
-const IMPORT_TYPES: { key: ImportType; label: string }[] = [
+// Hoofdtypes: zichtbaar als primaire pills
+const PRIMARY_IMPORT_TYPES: { key: ImportType; label: string }[] = [
   { key: 'mediamarkt', label: 'Media Markt' },
-  { key: 'shopify', label: 'Shopify' },
   { key: 'brincr', label: 'Brincr Portaal' },
   { key: 'fnac_vdb', label: 'FNAC / VDB' },
+];
+
+// Legacy: Shopify gaat tegenwoordig via de Shopify-pagina (API sync). Excel import blijft beschikbaar voor backfill van oude weken zonder read_all_orders scope.
+const LEGACY_IMPORT_TYPES: { key: ImportType; label: string }[] = [
+  { key: 'shopify', label: 'Shopify (Excel legacy)' },
 ];
 
 interface MatchResult {
@@ -246,7 +251,7 @@ export default function Import() {
       <div>
         <label className="block text-xs text-dark/50 mb-2 uppercase tracking-wide">Importtype</label>
         <div className="flex flex-wrap gap-2">
-          {IMPORT_TYPES.map((t) => (
+          {PRIMARY_IMPORT_TYPES.map((t) => (
             <button
               key={t.key}
               onClick={() => { setImportType(t.key); (setParsed([]), setParsedPerFile([])); setStatus(''); }}
@@ -260,6 +265,29 @@ export default function Import() {
             </button>
           ))}
         </div>
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs text-dark/40 hover:text-dark/60 select-none">
+            Toon legacy importtypes
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {LEGACY_IMPORT_TYPES.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => { setImportType(t.key); (setParsed([]), setParsedPerFile([])); setStatus(''); }}
+                className={`px-4 py-2 rounded-2xl text-sm transition ${
+                  t.key === importType
+                    ? 'bg-gradient-to-r from-accent-light to-accent text-white'
+                    : 'bg-bg2 text-dark/40 hover:text-dark/70 hover:bg-bg4 border border-dashed border-bg4'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-dark/40">
+            Shopify gebruikt nu de live API-sync via de <strong>Shopify</strong> pagina in de sidebar. Excel-import alleen voor backfill van oude weken (vóór 60-dagen limiet).
+          </p>
+        </details>
       </div>
 
       {/* Market selector for Shopify/Brincr */}
