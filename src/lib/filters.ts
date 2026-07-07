@@ -175,3 +175,14 @@ export function resolveStoreKey(r: DataRow): string {
   if (ch === 'brincr' && r.st) return `Brincr / ${r.st}`;
   return r.sl || r.st || r.ch || '—';
 }
+
+/**
+ * Refurbished-verkopen via Shopify tellen NIET mee in de sell-out. Herkent
+ * 'Refurbished' / 'refurbished' in de productnaam, uitsluitend voor het
+ * Shopify-kanaal (Media Markt e.d. refurbished blijft gewoon meetellen).
+ * Wordt toegepast in allData(), zodat deze rijen nergens meegeteld worden.
+ */
+export function isShopifyRefurbished(r: DataRow): boolean {
+  const ch = (r.ch || '').toLowerCase();
+  return ch.startsWith('shopify') && /refurbished/i.test(r.an || '');
+}
