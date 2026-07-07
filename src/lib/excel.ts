@@ -493,9 +493,10 @@ export function exportBrandExcel(
 }
 
 /**
- * SOA maand-totaaloverzicht: één tabblad met per product één regel. De aantallen
- * worden opgeteld over alle winkels/verkopers en kanalen samen (geen splitsing
- * per verkoper). `rows` is al gefilterd op de gekozen maand + het actieve
+ * SOA maand-totaaloverzicht: één tabblad per merk. Binnen elk merk staat per
+ * product één regel met het totaal verkochte aantal, opgeteld over alle
+ * winkels/verkopers en kanalen samen (geen splitsing per verkoper) plus een
+ * TOTAAL-regel. `rows` is al gefilterd op de gekozen maand + het actieve
  * kanaalfilter; `month` is een maandsleutel "YYYY-MM".
  */
 export function exportMonthTotalExcel(
@@ -504,51 +505,82 @@ export function exportMonthTotalExcel(
   rows: DataRow[],
   aliases: Record<string, string>
 ): void {
-  // Aggregeer per resolved productsleutel (catalogus-SKU of artikelnaam).
-  const groups: Record<string, DataRow[]> = {};
+  // 1. Groepeer rijen per merk (case/whitespace-insensitief, meest-voorkomende
+  //    casing als weergave), zodat 'PURE' / 'Pure Electric' in één blad belanden.
+  const brandBuckets: Record<string, { labelCounts: Record<string, number>; rows: DataRow[] }> = {};
   for (const r of rows) {
-    const key = resolveProductKey(r);
-    (groups[key] ||= []).push(r);
+    const key = (r.mfr || '').trim().toLowerCase() || 'onbekend merk';
+    const bucket = (brandBuckets[key] ||= { labelCounts: {}, rows: [] });
+    const label = (r.mfr || '').trim() || 'Onbekend merk';
+    bucket.labelCounts[label] = (bucket.labelCounts[label] || 0) + 1;
+    bucket.rows.push(r);
   }
 
-  const products = Object.entries(groups)
-    .map(([key, grp]) => ({
-      name: resolvedDisplayName(key, aliases),
-      brand: grp[0].mfr || 'Onbekend merk',
-      sold: grp.reduce((a, r) => a + r.s, 0),
-      stock: stockForArticle(grp),
-    }))
-    .filter((p) => p.sold !== 0 || p.stock > 0)
-    .sort((a, b) => b.sold - a.sold || b.stock - a.stock || a.name.localeCompare(b.name));
+  // 2. Bouw per merk de productlijst (geaggregeerd per product) + merk-totaal.
+  const brands = Object.values(brandBuckets)
+    .map((bucket) => {
+      const brand = Object.entries(bucket.labelCounts).sort((a, b) => b[1] - a[1])[0][0];
+      const products: Record<string, DataRow[]> = {};
+      for (const r of bucket.rows) {
+        const pk = resolveProductKey(r);
+        (products[pk] ||= []).push(r);
+      }
+      const items = Object.entries(products)
+        .map(([pk, grp]) => ({
+          name: resolvedDisplayName(pk, aliases),
+          sold: grp.reduce((a, r) => a + r.s, 0),
+          stock: stockForArticle(grp),
+        }))
+        .filter((p) => p.sold !== 0 || p.stock > 0)
+        .sort((a, b) => b.sold - a.sold || b.stock - a.stock || a.name.localeCompare(b.name));
+      const totalSold = items.reduce((a, p) => a + p.sold, 0);
+      return { brand, items, totalSold };
+    })
+    .filter((b) => b.items.length > 0)
+    .sort((a, b) => b.totalSold - a.totalSold || a.brand.localeCompare(b.brand));
 
-  const HEADER: (string | number)[] = ['Product', 'Merk', 'Aantal verkocht', 'Voorraad einde maand'];
-  const data: (string | number)[][] = [
-    [`SOA Totaaloverzicht - ${monthLabel(month)} (${channelLabel})`, '', '', ''],
-    ['', '', '', ''],
-    HEADER,
-  ];
+  const HEADER: (string | number)[] = ['Product', 'Aantal verkocht', 'Voorraad einde maand'];
 
-  let totSold = 0, totStock = 0;
-  for (const p of products) {
-    totSold += p.sold;
-    totStock += p.stock;
-    data.push([p.name, p.brand, p.sold, p.stock || '']);
-  }
-  data.push(['', '', '', '']);
-  data.push(['TOTAAL', '', totSold, totStock || '']);
+  const buildBrandSheet = (title: string, items: { name: string; sold: number; stock: number }[]): XLSX.WorkSheet => {
+    const data: (string | number)[][] = [
+      [title, '', ''],
+      ['', '', ''],
+      HEADER,
+    ];
+    let totSold = 0, totStock = 0;
+    for (const p of items) {
+      totSold += p.sold;
+      totStock += p.stock;
+      data.push([p.name, p.sold, p.stock || '']);
+    }
+    data.push(['', '', '']);
+    data.push(['TOTAAL', totSold, totStock || '']);
 
-  const ws = XLSX.utils.aoa_to_sheet(data);
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    for (let c = 0; c < HEADER.length; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: 2, c })];
+      if (cell) cell.s = { ...(cell.s || {}), font: { bold: true }, alignment: { wrapText: true } };
+    }
+    autoWidth(ws, data);
+    return ws;
+  };
 
-  // Kopregel vetgedrukt + wrap.
-  for (let c = 0; c < HEADER.length; c++) {
-    const cell = ws[XLSX.utils.encode_cell({ r: 2, c })];
-    if (cell) cell.s = { ...(cell.s || {}), font: { bold: true }, alignment: { wrapText: true } };
-  }
-
-  autoWidth(ws, data);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetSafeName('SOA Totaal', new Set()));
-  XLSX.writeFile(wb, `SOA Totaaloverzicht ${monthLabel(month)} (${channelLabel}) (${formatExportDate()}).xlsx`);
+  const usedSheetNames = new Set<string>();
+  const period = `${monthLabel(month)} (${channelLabel})`;
+
+  if (brands.length === 0) {
+    // Lege maand: toch een geldig bestand teruggeven.
+    const ws = buildBrandSheet(`SOA Totaaloverzicht - ${period}`, []);
+    XLSX.utils.book_append_sheet(wb, ws, sheetSafeName('SOA Totaal', usedSheetNames));
+  } else {
+    for (const b of brands) {
+      const ws = buildBrandSheet(`SOA Totaaloverzicht - ${period} - ${b.brand}`, b.items);
+      XLSX.utils.book_append_sheet(wb, ws, sheetSafeName(b.brand, usedSheetNames));
+    }
+  }
+
+  XLSX.writeFile(wb, `SOA Totaaloverzicht ${period} (${formatExportDate()}).xlsx`);
 }
 
 function autoWidth(ws: XLSX.WorkSheet, data: (string | number)[][]) {
