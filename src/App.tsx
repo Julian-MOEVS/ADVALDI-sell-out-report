@@ -5,6 +5,7 @@ import Topbar from './components/layout/Topbar';
 import LoginScreen from './components/layout/LoginScreen';
 import Dashboard from './pages/Dashboard';
 import WeekView from './pages/WeekView';
+import MonthView from './pages/MonthView';
 import Products from './pages/Products';
 import Stores from './pages/Stores';
 import Brands from './pages/Brands';
@@ -19,6 +20,7 @@ import StoreDetail from './pages/StoreDetail';
 const pages: Record<string, { title: string; component: React.FC }> = {
   dashboard: { title: 'Dashboard', component: Dashboard },
   weekview: { title: 'Per week', component: WeekView },
+  monthview: { title: 'Per maand (SOA)', component: MonthView },
   products: { title: 'Producten', component: Products },
   stores: { title: 'Winkels', component: Stores },
   brands: { title: 'Merken', component: Brands },

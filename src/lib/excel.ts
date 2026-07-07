@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
 import type { CatalogEntry } from './supabase';
-import { stockForArticle, resolveProductKey, resolvedDisplayName } from './filters';
+import { stockForArticle, resolveProductKey, resolvedDisplayName, monthLabel } from './filters';
 
 interface ColMap {
   week: number;
@@ -366,6 +366,65 @@ export function exportBrandExcel(
   aliases: Record<string, string>
 ): void {
   exportWeekExcel(week, market, rows, [], aliases);
+}
+
+/**
+ * SOA maand-totaaloverzicht: één tabblad met per product één regel. De aantallen
+ * worden opgeteld over alle winkels/verkopers en kanalen samen (geen splitsing
+ * per verkoper). `rows` is al gefilterd op de gekozen maand + het actieve
+ * kanaalfilter; `month` is een maandsleutel "YYYY-MM".
+ */
+export function exportMonthTotalExcel(
+  month: string,
+  channelLabel: string,
+  rows: DataRow[],
+  aliases: Record<string, string>
+): void {
+  // Aggregeer per resolved productsleutel (catalogus-SKU of artikelnaam).
+  const groups: Record<string, DataRow[]> = {};
+  for (const r of rows) {
+    const key = resolveProductKey(r);
+    (groups[key] ||= []).push(r);
+  }
+
+  const products = Object.entries(groups)
+    .map(([key, grp]) => ({
+      name: resolvedDisplayName(key, aliases),
+      brand: grp[0].mfr || 'Onbekend merk',
+      sold: grp.reduce((a, r) => a + r.s, 0),
+      stock: stockForArticle(grp),
+    }))
+    .filter((p) => p.sold !== 0 || p.stock > 0)
+    .sort((a, b) => b.sold - a.sold || b.stock - a.stock || a.name.localeCompare(b.name));
+
+  const HEADER: (string | number)[] = ['Product', 'Merk', 'Aantal verkocht', 'Voorraad einde maand'];
+  const data: (string | number)[][] = [
+    [`SOA Totaaloverzicht - ${monthLabel(month)} (${channelLabel})`, '', '', ''],
+    ['', '', '', ''],
+    HEADER,
+  ];
+
+  let totSold = 0, totStock = 0;
+  for (const p of products) {
+    totSold += p.sold;
+    totStock += p.stock;
+    data.push([p.name, p.brand, p.sold, p.stock || '']);
+  }
+  data.push(['', '', '', '']);
+  data.push(['TOTAAL', '', totSold, totStock || '']);
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // Kopregel vetgedrukt + wrap.
+  for (let c = 0; c < HEADER.length; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: 2, c })];
+    if (cell) cell.s = { ...(cell.s || {}), font: { bold: true }, alignment: { wrapText: true } };
+  }
+
+  autoWidth(ws, data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetSafeName('SOA Totaal', new Set()));
+  XLSX.writeFile(wb, `SOA Totaaloverzicht ${monthLabel(month)} (${channelLabel}) (${formatExportDate()}).xlsx`);
 }
 
 function autoWidth(ws: XLSX.WorkSheet, data: (string | number)[][]) {

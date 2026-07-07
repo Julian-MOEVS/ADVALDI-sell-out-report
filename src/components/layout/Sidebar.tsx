@@ -1,6 +1,6 @@
 import { useAppStore } from '../../store/useAppStore';
 import {
-  LayoutDashboard, CalendarDays, Package, Store, Tags,
+  LayoutDashboard, CalendarDays, CalendarRange, Package, Store, Tags,
   FileSpreadsheet, Database, ShoppingBag, Globe, Box, X,
 } from 'lucide-react';
 
@@ -10,6 +10,7 @@ const sections = [
     items: [
       { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { key: 'weekview', label: 'Per week', icon: CalendarDays },
+      { key: 'monthview', label: 'Per maand (SOA)', icon: CalendarRange },
       { key: 'products', label: 'Producten', icon: Package },
       { key: 'stores', label: 'Winkels', icon: Store },
       { key: 'brands', label: 'Merken', icon: Tags },
