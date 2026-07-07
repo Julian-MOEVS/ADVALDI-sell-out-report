@@ -131,6 +131,130 @@ export function parseExcelFile(file: File): Promise<{ rows: DataRow[]; market: '
   });
 }
 
+/* ── Media Markt CSV parser (nieuwe puntkomma-gescheiden export, per land) ── */
+
+function parseSemicolonLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') inQuotes = !inQuotes;
+    else if (ch === ';' && !inQuotes) { result.push(current); current = ''; }
+    else current += ch;
+  }
+  result.push(current);
+  return result;
+}
+
+/** Markt uit de "Sales channel"-waarde ("15 Media Markt Netherlands", "50 Online Belgium", "37 Media Markt Luxembourg"). LU valt onder BE. */
+function mmMarketFromSalesChannel(sc: string): 'NL' | 'BE' | null {
+  const v = sc.toLowerCase();
+  if (v.includes('netherlands') || v.includes('nederland')) return 'NL';
+  if (v.includes('belgium') || v.includes('belgi') || v.includes('luxembourg') || v.includes('luxemburg')) return 'BE';
+  return null;
+}
+
+/** Fallback: markt uit de bestandsnaam (NL_… → NL, BE_…/LU_… → BE). */
+function mmMarketFromFilename(name: string): 'NL' | 'BE' {
+  const v = name.toUpperCase();
+  if (v.startsWith('BE') || v.startsWith('LU') || v.includes('_BE_') || v.includes('_LU_')) return 'BE';
+  return 'NL';
+}
+
+/**
+ * Nieuwe Media Markt CSV (puntkomma-gescheiden, per land NL/BE/LU). Kopregel:
+ * Week;Manufacturer;Department id;Department name;Product group id;Product group name;
+ * Article number;Article name;EAN;Sales channel;Store code;Store name;Supplier number;
+ * Supplier name;purchase;sales;stock
+ *
+ * Luxemburg valt onder markt BE (BE/LU). Kanaal wordt MM-NL / MM-BE, net als bij de
+ * oude Media Markt-xlsx, zodat de data samenvalt met bestaande MM-cijfers. Het Media
+ * Markt-artikelnummer wordt als `sku` bewaard (zoals de FNAC/VDB-CSV de VDB-code);
+ * EAN blijft de primaire catalogus-match.
+ */
+export function parseMediaMarktCsvText(
+  text: string,
+  fileName: string
+): { rows: DataRow[]; market: 'NL' | 'BE' } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return { rows: [], market: mmMarketFromFilename(fileName) };
+
+  const headers = parseSemicolonLine(lines[0]);
+  const col = {
+    week: findCol(headers, 'Week'),
+    manufacturer: findCol(headers, 'Manufacturer'),
+    productGroup: findCol(headers, 'Product group name', 'Product group', 'Productgroup'),
+    articleNumber: findCol(headers, 'Article number', 'Articlenumber'),
+    articleName: findCol(headers, 'Article name', 'Articlename'),
+    ean: findCol(headers, 'EAN'),
+    salesChannel: findCol(headers, 'Sales channel', 'Saleschannel'),
+    storeName: findCol(headers, 'Store name', 'Storename'),
+    purchase: findCol(headers, 'purchase', 'Purchase', 'Purchases'),
+    sales: findCol(headers, 'sales', 'Sales'),
+    stock: findCol(headers, 'stock', 'Stock'),
+  };
+
+  // Zonder Week- of Article name-kolom is dit geen geldig MM-CSV.
+  if (col.week < 0 || col.articleName < 0) {
+    return { rows: [], market: mmMarketFromFilename(fileName) };
+  }
+
+  let fileMarket: 'NL' | 'BE' = mmMarketFromFilename(fileName);
+  const rows: DataRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const r = parseSemicolonLine(lines[i]);
+    if (r.length < 3) continue;
+
+    const w = cleanStr(r[col.week]);
+    if (!w) continue;
+
+    const sc = col.salesChannel >= 0 ? cleanStr(r[col.salesChannel]) : '';
+    const market = mmMarketFromSalesChannel(sc) ?? mmMarketFromFilename(fileName);
+    fileMarket = market;
+    const store = col.storeName >= 0 ? cleanStr(r[col.storeName]) : '';
+    // "15 Media Markt Netherlands" → "Media Markt Netherlands" (nummer-prefix eraf).
+    const branch = sc.replace(/^\s*\d+\s+/, '').trim();
+    // Winkel-label = "tak / winkel" (bijv. "Media Markt Netherlands / Mediamarkt
+    // Den Bosch") zodat de specifieke winkel benoemd wordt en niet alleen de tak;
+    // online blijft zo ook los van de fysieke winkels.
+    const storeLabel = store ? (branch ? `${branch} / ${store}` : store) : branch;
+
+    rows.push({
+      w,
+      rg: market,
+      mfr: normalizeBrand(cleanStr(r[col.manufacturer])),
+      pg: col.productGroup >= 0 ? cleanStr(r[col.productGroup]) : '',
+      an: cleanStr(r[col.articleName]),
+      ean: col.ean >= 0 ? cleanStr(r[col.ean]) : '',
+      sku: col.articleNumber >= 0 ? cleanStr(r[col.articleNumber]) : '',
+      ch: market === 'BE' ? 'MM-BE' : 'MM-NL',
+      st: store,
+      sl: storeLabel,
+      p: cleanNum(r[col.purchase]),
+      s: cleanNum(r[col.sales]),
+      k: cleanNum(r[col.stock]),
+    });
+  }
+
+  return { rows, market: fileMarket };
+}
+
+export function parseMediaMarktCsv(file: File): Promise<{ rows: DataRow[]; market: 'NL' | 'BE' }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        resolve(parseMediaMarktCsvText(e.target!.result as string, file.name));
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error('Bestand kon niet worden gelezen'));
+    reader.readAsText(file);
+  });
+}
+
 /** Returns Sunday (end of ISO week) for a week string like "202446". */
 function isoWeekEnd(week: string): Date | null {
   if (!/^\d{6}$/.test(week)) return null;

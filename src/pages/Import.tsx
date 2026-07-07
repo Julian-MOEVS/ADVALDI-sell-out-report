@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { parseExcelFile, parseExportStatistics, parseFnacVdbCsv } from '../lib/excel';
+import { parseExcelFile, parseExportStatistics, parseFnacVdbCsv, parseMediaMarktCsv } from '../lib/excel';
 import { matchToCatalog, getDynamicCatalog, setProductLinks, setDynamicCatalog, addAliasInMemory } from '../lib/catalog';
 import { upsertProductLinks, fetchProductLinks, upsertCatalogAlias, upsertCatalog, fetchCatalog } from '../lib/supabase';
 import type { DataRow } from '../types';
@@ -99,7 +99,10 @@ export default function Import() {
             result = await parseFnacVdbCsv(file);
             break;
           default:
-            result = await parseExcelFile(file);
+            // Media Markt: nieuwe puntkomma-CSV (per land) of oude xlsx.
+            result = /\.csv$/i.test(file.name)
+              ? await parseMediaMarktCsv(file)
+              : await parseExcelFile(file);
         }
         allRows = [...allRows, ...result.rows];
         perFile.push({ filename: file.name, rows: result.rows });
@@ -316,8 +319,8 @@ export default function Import() {
         <div className="text-sm text-dark/60">
           {importType === 'mediamarkt' && (
             <>
-              <p><strong>NL-bestanden:</strong> <code className="text-xs bg-bg px-1 rounded">Purchase_Sales_Stock_Report_</code></p>
-              <p className="mt-1"><strong>BE/LU-bestanden:</strong> <code className="text-xs bg-bg px-1 rounded">Sales_and_Stock_Report_Week_</code></p>
+              <p><strong>Nieuw (.csv, per land):</strong> <code className="text-xs bg-bg px-1 rounded">NL_… / BE_… / LU_…</code> (puntkomma-gescheiden). LU valt onder BE/LU. Meerdere landen tegelijk uploaden kan.</p>
+              <p className="mt-1"><strong>Oud (.xlsx):</strong> <code className="text-xs bg-bg px-1 rounded">Purchase_Sales_Stock_Report_</code> (NL) en <code className="text-xs bg-bg px-1 rounded">Sales_and_Stock_Report_Week_</code> (BE/LU).</p>
             </>
           )}
           {importType === 'shopify' && (
@@ -345,7 +348,7 @@ export default function Import() {
         <Upload size={40} className="mx-auto text-dark/40 mb-3" />
         <p className="text-dark/60">Sleep bestanden hierheen of klik om te selecteren</p>
         <p className="text-xs text-dark/40 mt-1">
-          {importType === 'fnac_vdb' ? '.csv' : '.xlsx, .xls'}
+          {importType === 'fnac_vdb' ? '.csv' : importType === 'mediamarkt' ? '.csv, .xlsx, .xls' : '.xlsx, .xls'}
         </p>
         <input
           id="file-input"
