@@ -13,13 +13,26 @@ let aliasSkuIndex: Record<string, string> = {}; // alias_sku → catalog_sku
 let aliasEanIndex: Record<string, string> = {}; // alias_ean → catalog_sku
 let allAliases: CatalogAlias[] = [];
 
+/**
+ * Normaliseer een EAN/GTIN voor vergelijking door voorloopnullen te strippen.
+ * Bronnen verschillen in padding: Media Markt levert GTIN-13 met voorloopnul
+ * ("0850058342139") terwijl de catalogus GTIN-12 bewaart ("850058342139").
+ * Zonder normalisatie mislukt de exact-match. Alleen-cijfer waarden worden
+ * genormaliseerd; andere waarden blijven ongewijzigd.
+ */
+export function normEan(ean: string): string {
+  const s = String(ean ?? '').trim();
+  if (!/^\d+$/.test(s)) return s;
+  return s.replace(/^0+(?=\d)/, '');
+}
+
 export function setDynamicCatalog(entries: CatalogEntry[]) {
   dynamicCatalog = {};
   eanIndex = {};
   nameIndex = {};
   for (const entry of entries) {
     dynamicCatalog[entry.sku] = entry;
-    if (entry.ean) eanIndex[entry.ean] = entry.sku;
+    if (entry.ean) eanIndex[normEan(entry.ean)] = entry.sku;
     if (entry.name) nameIndex[entry.name.toLowerCase()] = entry.sku;
   }
 }
@@ -49,7 +62,7 @@ export function setCatalogAliases(aliases: CatalogAlias[]) {
   aliasEanIndex = {};
   for (const a of aliases) {
     if (a.alias_sku) aliasSkuIndex[a.alias_sku] = a.catalog_sku;
-    if (a.alias_ean) aliasEanIndex[a.alias_ean] = a.catalog_sku;
+    if (a.alias_ean) aliasEanIndex[normEan(a.alias_ean)] = a.catalog_sku;
   }
 }
 
@@ -60,7 +73,7 @@ export function getAliasesForSku(catalogSku: string): CatalogAlias[] {
 export function addAliasInMemory(alias: CatalogAlias) {
   allAliases.push(alias);
   if (alias.alias_sku) aliasSkuIndex[alias.alias_sku] = alias.catalog_sku;
-  if (alias.alias_ean) aliasEanIndex[alias.alias_ean] = alias.catalog_sku;
+  if (alias.alias_ean) aliasEanIndex[normEan(alias.alias_ean)] = alias.catalog_sku;
 }
 
 export function removeAliasInMemory(id: string) {
@@ -69,7 +82,7 @@ export function removeAliasInMemory(id: string) {
   aliasEanIndex = {};
   for (const a of allAliases) {
     if (a.alias_sku) aliasSkuIndex[a.alias_sku] = a.catalog_sku;
-    if (a.alias_ean) aliasEanIndex[a.alias_ean] = a.catalog_sku;
+    if (a.alias_ean) aliasEanIndex[normEan(a.alias_ean)] = a.catalog_sku;
   }
 }
 
@@ -88,7 +101,7 @@ export function updateCatalogInMemory(oldSku: string, fields: CatalogEntry) {
   eanIndex = {};
   nameIndex = {};
   for (const entry of Object.values(dynamicCatalog)) {
-    if (entry.ean) eanIndex[entry.ean] = entry.sku;
+    if (entry.ean) eanIndex[normEan(entry.ean)] = entry.sku;
     if (entry.name) nameIndex[entry.name.toLowerCase()] = entry.sku;
   }
   // rebuild alias indices since their catalog_sku may have changed
@@ -112,10 +125,11 @@ export function matchToCatalog(articleName: string, ean?: string, sku?: string):
     if (aliasSkuIndex[sku]) return aliasSkuIndex[sku];
   }
 
-  // 2. EAN match (catalog primary or alias)
+  // 2. EAN match (catalog primary or alias), voorloopnul-ongevoelig (GTIN-12/13)
   if (ean) {
-    if (eanIndex[ean]) return eanIndex[ean];
-    if (aliasEanIndex[ean]) return aliasEanIndex[ean];
+    const ne = normEan(ean);
+    if (eanIndex[ne]) return eanIndex[ne];
+    if (aliasEanIndex[ne]) return aliasEanIndex[ne];
   }
 
   // 3. Article name as a catalog SKU (rare, but supported)
