@@ -113,7 +113,13 @@ export default function WeekView() {
         }));
         const withSales = articleEntries.filter((a) => a.sales > 0);
         const withoutSales = articleEntries.length - withSales.length;
-        return { brand, sales, stock, articleEntries: withSales, withoutSales };
+        // Verkopen per kanaal, zodat een multi-channel merk (bijv. Pure via MM +
+        // FNAC + Shopify + Vanden Borre) tegen de losse bronbestanden te leggen is.
+        const channelBreakdown = Object.entries(groupBy(bRows, (r) => r.ch || '—'))
+          .map(([ch, cRows]) => ({ ch, sales: cRows.reduce((a, r) => a + r.s, 0) }))
+          .filter((c) => c.sales !== 0)
+          .sort((a, b) => b.sales - a.sales);
+        return { brand, sales, stock, articleEntries: withSales, withoutSales, channelBreakdown };
       })
       .sort((a, b) => b.sales - a.sales);
   }, [rows, aliases]);
@@ -284,6 +290,17 @@ export default function WeekView() {
             <summary className="cursor-pointer flex items-center gap-2 py-2 px-3 bg-bg rounded-lg hover:bg-bg4 transition">
               <span className="font-medium">{bg.brand}</span>
             </summary>
+            {bg.channelBreakdown.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 ml-4 text-xs">
+                <span className="uppercase tracking-wide text-dark/40">Per kanaal:</span>
+                {bg.channelBreakdown.map((c) => (
+                  <span key={c.ch} className="inline-flex items-center gap-1">
+                    <ChannelPill channel={c.ch} /><span className="font-mono text-dark">{c.sales}</span>
+                  </span>
+                ))}
+                <span className="ml-auto font-mono text-dark/60">Totaal {bg.sales}</span>
+              </div>
+            )}
             <div className="mt-1 ml-4 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
