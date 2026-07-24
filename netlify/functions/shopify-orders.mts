@@ -241,4 +241,7 @@ export default async (req: Request, _ctx: Context) => {
   });
 };
 
-export const config = { path: '/api/shopify-orders' };
+export const config = {
+  path: '/api/shopify-orders',
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ['ip', 'domain'] as const },
+};

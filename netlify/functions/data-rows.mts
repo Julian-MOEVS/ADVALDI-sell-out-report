@@ -195,4 +195,7 @@ export default async (req: Request, _ctx: Context) => {
   return new Response('Method not allowed', { status: 405 });
 };
 
-export const config = { path: '/api/data-rows' };
+export const config = {
+  path: '/api/data-rows',
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ['ip', 'domain'] as const },
+};

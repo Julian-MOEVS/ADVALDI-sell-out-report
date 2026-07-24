@@ -98,4 +98,7 @@ export default async (req: Request, _ctx: Context) => {
   return Response.redirect(`${appUrl}/?shopify_connected=${encodeURIComponent(shop)}`, 302);
 };
 
-export const config = { path: '/api/shopify-oauth-callback' };
+export const config = {
+  path: '/api/shopify-oauth-callback',
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ['ip', 'domain'] as const },
+};

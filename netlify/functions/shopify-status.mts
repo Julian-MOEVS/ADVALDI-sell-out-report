@@ -59,4 +59,7 @@ export default async (req: Request, _ctx: Context) => {
   );
 };
 
-export const config = { path: '/api/shopify-status' };
+export const config = {
+  path: '/api/shopify-status',
+  rateLimit: { windowLimit: 20, windowSize: 60, aggregateBy: ['ip', 'domain'] as const },
+};
