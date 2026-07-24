@@ -6,7 +6,16 @@ import { createClient } from '@supabase/supabase-js';
  * Returnt info over de huidige Shopify-koppeling: shop URL, scopes en moment van laatste sync.
  * Wordt gebruikt door de Shopify-pagina om de "Auto Sync (sinds laatste sync)" knop te tonen.
  */
-export default async (_req: Request, _ctx: Context) => {
+export default async (req: Request, _ctx: Context) => {
+  const apiSecret = process.env.API_SECRET;
+  const authHeader = req.headers.get('authorization') || '';
+  if (!apiSecret || authHeader !== `Bearer ${apiSecret}`) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
