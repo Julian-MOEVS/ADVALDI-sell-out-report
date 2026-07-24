@@ -1,174 +1,102 @@
-import { createClient } from '@supabase/supabase-js';
 import type { DataRow } from '../types';
+import { authHeaders } from './api';
 
-const SUPABASE_URL = 'https://comqpyhbdsqifheoegjk.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNvbXFweWhiZHNxaWZoZW9lZ2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4MTY1MTAsImV4cCI6MjA5MTM5MjUxMH0.bQjtxnh2VMV8dfCYEZMqqVH1TmvnZTsvaHEdCAJCUZI';
+/**
+ * Data-laag voor sell-out data, catalogus, imports en aliases.
+ * Praat NIET meer rechtstreeks met Supabase vanuit de browser (dat gebruikte een
+ * publieke anon key zonder wachtwoord-check, en RLS bleek daar niet op ingesteld).
+ * Alle calls gaan nu via de authenticated Netlify Functions (/api/data-rows,
+ * /api/catalog, /api/product-links, /api/catalog-aliases, /api/imports), die
+ * dezelfde API_SECRET-check doen als de Shopify-functions en de service-role key
+ * server-side gebruiken.
+ */
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const JSON_HEADERS = { 'content-type': 'application/json' };
 
-const TABLE = 'sell_out_data';
-
-/** Fetch all rows from Supabase. Gooit een Error bij fout zodat callers het kunnen tonen. */
+/** Fetch all rows. Gooit een Error bij fout zodat callers het kunnen tonen. */
 export async function fetchAllRows(): Promise<DataRow[]> {
-  const rows: DataRow[] = [];
-  let from = 0;
-  const pageSize = 1000;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select('w, rg, mfr, pg, an, ean, sku, ch, st, sl, p, s, k')
-      // Stabiele volgorde voorkomt gemiste/dubbele rijen over pagina-grenzen
-      .order('w', { ascending: true })
-      .order('ch', { ascending: true })
-      .order('an', { ascending: true })
-      .range(from, from + pageSize - 1);
-
-    if (error) {
-      console.error('Supabase fetch error:', error);
-      throw new Error(`Supabase fetch faalde: ${error.message}`);
-    }
-
-    if (!data || data.length === 0) break;
-    rows.push(...(data as DataRow[]));
-    if (data.length < pageSize) break;
-    from += pageSize;
+  const res = await fetch('/api/data-rows', { headers: authHeaders() });
+  if (!res.ok) {
+    throw new Error(`Data-rows fetch faalde: ${res.status}`);
   }
-
-  return rows;
+  const data = (await res.json()) as { rows: DataRow[] };
+  return data.rows;
 }
 
-/** Insert rows into Supabase (batched in chunks of 500), optionally tagged with import_id.
- * Coalesce alle string-velden naar '' en numerieke naar 0 om NOT NULL constraint violations te voorkomen.
- * Bij batch-failure: returnt success=false met count = aantal reeds geinserte rijen vóór de fout. */
+/** Insert rows (batched server-side). Bij falen: success=false met count = aantal reeds ingevoerde rijen vóór de fout. */
 export async function insertRows(
   rows: DataRow[],
   importId?: string
 ): Promise<{ success: boolean; count: number; error?: string }> {
   if (rows.length === 0) return { success: true, count: 0 };
-  const BATCH = 500;
-  let inserted = 0;
-
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH).map((r) => ({
-      w: r.w || '',
-      rg: r.rg,
-      mfr: r.mfr || '',
-      pg: r.pg || '',
-      an: r.an || '',
-      ean: r.ean || '',
-      sku: r.sku || '',
-      ch: r.ch || '',
-      st: r.st || '',
-      sl: r.sl || '',
-      p: Number.isFinite(r.p) ? r.p : 0,
-      s: Number.isFinite(r.s) ? r.s : 0,
-      k: Number.isFinite(r.k) ? r.k : 0,
-      ...(importId ? { import_id: importId } : {}),
-    }));
-
-    const { error } = await supabase.from(TABLE).insert(batch);
-    if (error) {
-      console.error(`Supabase insert error op batch ${i / BATCH + 1}:`, error);
-      return { success: false, count: inserted, error: error.message };
-    }
-    inserted += batch.length;
-  }
-
-  return { success: true, count: inserted };
+  const res = await fetch('/api/data-rows', {
+    method: 'POST',
+    headers: authHeaders(JSON_HEADERS),
+    body: JSON.stringify({ rows, importId }),
+  });
+  if (!res.ok) return { success: false, count: 0, error: `HTTP ${res.status}` };
+  return (await res.json()) as { success: boolean; count: number; error?: string };
 }
 
 /** Delete rows matching a week + market combo */
 export async function deleteCombo(week: string, market: 'NL' | 'BE'): Promise<boolean> {
-  const { error } = await supabase
-    .from(TABLE)
-    .delete()
-    .eq('w', week)
-    .eq('rg', market);
-
-  if (error) {
-    console.error('Supabase delete error:', error);
+  const params = new URLSearchParams({ mode: 'combo', week, market });
+  const res = await fetch(`/api/data-rows?${params}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) {
+    console.error('deleteCombo faalde:', res.status);
     return false;
   }
-  return true;
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
 }
 
 /** Delete all rows for a given sales channel (e.g. 'Shopify') */
 export async function deleteChannel(channel: string): Promise<boolean> {
-  const { error } = await supabase
-    .from(TABLE)
-    .delete()
-    .eq('ch', channel);
-
-  if (error) {
-    console.error('Supabase delete channel error:', error);
+  const params = new URLSearchParams({ mode: 'channel', channel });
+  const res = await fetch(`/api/data-rows?${params}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) {
+    console.error('deleteChannel faalde:', res.status);
     return false;
   }
-  return true;
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
 }
 
-/** Delete rows for a channel matching any of the given ISO weeks.
- * Filtert ongeldige weken (alleen YYYYWW pattern). Batched op 500 weken per call. */
+/** Delete rows for a channel matching any of the given ISO weeks. Filtert ongeldige weken server-side (alleen YYYYWW). */
 export async function deleteChannelWeeks(channel: string, weeks: string[]): Promise<boolean> {
   const valid = weeks.filter((w) => /^\d{6}$/.test(w));
   if (valid.length === 0) return true;
-  const BATCH = 500;
-  for (let i = 0; i < valid.length; i += BATCH) {
-    const slice = valid.slice(i, i + BATCH);
-    const { error } = await supabase
-      .from(TABLE)
-      .delete()
-      .eq('ch', channel)
-      .in('w', slice);
-    if (error) {
-      console.error('Supabase delete channel+weeks error:', error);
-      return false;
-    }
+  const params = new URLSearchParams({ mode: 'channel-weeks', channel, weeks: valid.join(',') });
+  const res = await fetch(`/api/data-rows?${params}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) {
+    console.error('deleteChannelWeeks faalde:', res.status);
+    return false;
   }
-  return true;
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
 }
 
 /** Cleanup: verwijder rijen met ongeldige week (NaNNaN of niet YYYYWW). */
 export async function deleteInvalidWeekRows(): Promise<{ deleted: number; success: boolean }> {
-  const { count, error } = await supabase
-    .from(TABLE)
-    .delete({ count: 'exact' })
-    .not('w', '~', '^[0-9]{6}$');
-  if (error) {
-    console.error('Cleanup invalid-week rows error:', error);
-    return { deleted: 0, success: false };
-  }
-  return { deleted: count || 0, success: true };
+  const params = new URLSearchParams({ mode: 'invalid-week' });
+  const res = await fetch(`/api/data-rows?${params}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) return { deleted: 0, success: false };
+  return (await res.json()) as { deleted: number; success: boolean };
 }
 
-/** Cleanup: normaliseer alle Pure-vendor varianten voor een specifiek kanaal naar één canonieke naam. */
+/** Cleanup: normaliseer alle merk-varianten voor een specifiek kanaal naar één canonieke naam. */
 export async function normalizeChannelBrand(
   channel: string,
   fromPattern: string,
   toBrand: string
 ): Promise<{ updated: number; success: boolean }> {
-  // RPC zou efficiënter zijn, maar voor de hoeveelheid rijen die we verwachten doet een select+update OK.
-  const { data: candidates, error: selErr } = await supabase
-    .from(TABLE)
-    .select('w, ch, an, mfr')
-    .eq('ch', channel)
-    .ilike('mfr', fromPattern);
-  if (selErr) {
-    console.error('normalizeChannelBrand select error:', selErr);
-    return { updated: 0, success: false };
-  }
-  if (!candidates || candidates.length === 0) return { updated: 0, success: true };
-
-  const { error: updErr, count } = await supabase
-    .from(TABLE)
-    .update({ mfr: toBrand }, { count: 'exact' })
-    .eq('ch', channel)
-    .ilike('mfr', fromPattern);
-  if (updErr) {
-    console.error('normalizeChannelBrand update error:', updErr);
-    return { updated: 0, success: false };
-  }
-  return { updated: count || candidates.length, success: true };
+  const res = await fetch('/api/data-rows', {
+    method: 'PATCH',
+    headers: authHeaders(JSON_HEADERS),
+    body: JSON.stringify({ channel, fromPattern, toBrand }),
+  });
+  if (!res.ok) return { updated: 0, success: false };
+  return (await res.json()) as { updated: number; success: boolean };
 }
 
 /* ── Catalog aliases (extra SKUs/EANs per catalog product) ── */
@@ -181,41 +109,39 @@ export interface CatalogAlias {
   source?: string | null;
 }
 
-const ALIASES_TABLE = 'catalog_aliases';
-
 export async function fetchCatalogAliases(): Promise<CatalogAlias[]> {
-  const { data, error } = await supabase
-    .from(ALIASES_TABLE)
-    .select('id, catalog_sku, alias_sku, alias_ean, source');
-  if (error) {
-    console.error('Supabase aliases fetch error:', error);
+  const res = await fetch('/api/catalog-aliases', { headers: authHeaders() });
+  if (!res.ok) {
+    console.error('fetchCatalogAliases faalde:', res.status);
     return [];
   }
-  return (data || []) as CatalogAlias[];
+  const data = (await res.json()) as { aliases: CatalogAlias[] };
+  return data.aliases;
 }
 
 export async function upsertCatalogAlias(alias: CatalogAlias): Promise<boolean> {
-  const { error } = await supabase
-    .from(ALIASES_TABLE)
-    .insert(alias);
-  if (error) {
-    if (String(error.message || '').includes('duplicate')) return true;
-    console.error('Supabase alias insert error:', error);
+  const res = await fetch('/api/catalog-aliases', {
+    method: 'POST',
+    headers: authHeaders(JSON_HEADERS),
+    body: JSON.stringify(alias),
+  });
+  if (!res.ok) {
+    console.error('upsertCatalogAlias faalde:', res.status);
     return false;
   }
-  return true;
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
 }
 
 export async function deleteCatalogAlias(id: string): Promise<boolean> {
-  const { error } = await supabase
-    .from(ALIASES_TABLE)
-    .delete()
-    .eq('id', id);
-  if (error) {
-    console.error('Supabase alias delete error:', error);
+  const params = new URLSearchParams({ id });
+  const res = await fetch(`/api/catalog-aliases?${params}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) {
+    console.error('deleteCatalogAlias faalde:', res.status);
     return false;
   }
-  return true;
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
 }
 
 /* ── Imports tracking ── */
@@ -230,8 +156,6 @@ export interface ImportBatch {
   imported_at: string;
 }
 
-const IMPORTS_TABLE = 'imports';
-
 export async function createImport(data: {
   filename: string;
   channel: string | null;
@@ -239,40 +163,38 @@ export async function createImport(data: {
   weeks: string[];
   row_count: number;
 }): Promise<string | null> {
-  const { data: result, error } = await supabase
-    .from(IMPORTS_TABLE)
-    .insert(data)
-    .select('id')
-    .single();
-  if (error || !result) {
-    console.error('Supabase import create error:', error);
+  const res = await fetch('/api/imports', {
+    method: 'POST',
+    headers: authHeaders(JSON_HEADERS),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    console.error('createImport faalde:', res.status);
     return null;
   }
-  return (result as { id: string }).id;
+  const result = (await res.json()) as { id: string | null };
+  return result.id;
 }
 
 export async function fetchImports(): Promise<ImportBatch[]> {
-  const { data, error } = await supabase
-    .from(IMPORTS_TABLE)
-    .select('id, filename, channel, rg, weeks, row_count, imported_at')
-    .order('imported_at', { ascending: false });
-  if (error) {
-    console.error('Supabase imports fetch error:', error);
+  const res = await fetch('/api/imports', { headers: authHeaders() });
+  if (!res.ok) {
+    console.error('fetchImports faalde:', res.status);
     return [];
   }
-  return (data || []) as ImportBatch[];
+  const data = (await res.json()) as { imports: ImportBatch[] };
+  return data.imports;
 }
 
 export async function deleteImport(id: string): Promise<boolean> {
-  const { error } = await supabase
-    .from(IMPORTS_TABLE)
-    .delete()
-    .eq('id', id);
-  if (error) {
-    console.error('Supabase import delete error:', error);
+  const params = new URLSearchParams({ id });
+  const res = await fetch(`/api/imports?${params}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) {
+    console.error('deleteImport faalde:', res.status);
     return false;
   }
-  return true;
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
 }
 
 /* ── Product Catalog ── */
@@ -284,67 +206,55 @@ export interface CatalogEntry {
   brand: string;
 }
 
-const CATALOG_TABLE = 'product_catalog';
-
 /** Fetch all catalog entries */
 export async function fetchCatalog(): Promise<CatalogEntry[]> {
-  const entries: CatalogEntry[] = [];
-  let from = 0;
-  const pageSize = 1000;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from(CATALOG_TABLE)
-      .select('sku, name, ean, brand')
-      .range(from, from + pageSize - 1);
-
-    if (error) {
-      console.error('Supabase catalog fetch error:', error);
-      break;
-    }
-
-    if (!data || data.length === 0) break;
-    entries.push(...(data as CatalogEntry[]));
-    if (data.length < pageSize) break;
-    from += pageSize;
+  const res = await fetch('/api/catalog', { headers: authHeaders() });
+  if (!res.ok) {
+    console.error('fetchCatalog faalde:', res.status);
+    return [];
   }
-
-  return entries;
+  const data = (await res.json()) as { entries: CatalogEntry[] };
+  return data.entries;
 }
 
 /** Upsert catalog entries (replaces existing SKUs) */
 export async function upsertCatalog(entries: CatalogEntry[]): Promise<{ success: boolean; count: number }> {
-  const BATCH = 500;
-  let upserted = 0;
-
-  for (let i = 0; i < entries.length; i += BATCH) {
-    const batch = entries.slice(i, i + BATCH);
-    const { error } = await supabase
-      .from(CATALOG_TABLE)
-      .upsert(batch, { onConflict: 'sku' });
-
-    if (error) {
-      console.error('Supabase catalog upsert error:', error);
-      return { success: false, count: upserted };
-    }
-    upserted += batch.length;
-  }
-
-  return { success: true, count: upserted };
+  const res = await fetch('/api/catalog', {
+    method: 'POST',
+    headers: authHeaders(JSON_HEADERS),
+    body: JSON.stringify({ entries }),
+  });
+  if (!res.ok) return { success: false, count: 0 };
+  return (await res.json()) as { success: boolean; count: number };
 }
 
 /** Delete all catalog entries */
 export async function clearCatalog(): Promise<boolean> {
-  const { error } = await supabase
-    .from(CATALOG_TABLE)
-    .delete()
-    .neq('sku', '');
-
-  if (error) {
-    console.error('Supabase catalog clear error:', error);
+  const res = await fetch('/api/catalog', { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) {
+    console.error('clearCatalog faalde:', res.status);
     return false;
   }
-  return true;
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
+}
+
+/** Update a single catalog product's fields. If sku changes, cascade to product_links and catalog_aliases. */
+export async function updateCatalogEntry(
+  oldSku: string,
+  newFields: { sku: string; name: string; ean: string; brand: string }
+): Promise<boolean> {
+  const res = await fetch('/api/catalog', {
+    method: 'PATCH',
+    headers: authHeaders(JSON_HEADERS),
+    body: JSON.stringify({ oldSku, ...newFields }),
+  });
+  if (!res.ok) {
+    console.error('updateCatalogEntry faalde:', res.status);
+    return false;
+  }
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
 }
 
 /* ── Product Links (sell-out article name → catalog SKU) ── */
@@ -354,99 +264,37 @@ export interface ProductLink {
   catalog_sku: string;
 }
 
-const LINKS_TABLE = 'product_links';
-
 /** Fetch all product links */
 export async function fetchProductLinks(): Promise<ProductLink[]> {
-  const links: ProductLink[] = [];
-  let from = 0;
-  const pageSize = 1000;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from(LINKS_TABLE)
-      .select('article_name, catalog_sku')
-      .range(from, from + pageSize - 1);
-
-    if (error) {
-      console.error('Supabase links fetch error:', error);
-      break;
-    }
-
-    if (!data || data.length === 0) break;
-    links.push(...(data as ProductLink[]));
-    if (data.length < pageSize) break;
-    from += pageSize;
+  const res = await fetch('/api/product-links', { headers: authHeaders() });
+  if (!res.ok) {
+    console.error('fetchProductLinks faalde:', res.status);
+    return [];
   }
-
-  return links;
+  const data = (await res.json()) as { links: ProductLink[] };
+  return data.links;
 }
 
 /** Delete a single product link by article_name */
 export async function deleteProductLink(article_name: string): Promise<boolean> {
-  const { error } = await supabase
-    .from(LINKS_TABLE)
-    .delete()
-    .eq('article_name', article_name);
-  if (error) {
-    console.error('Supabase link delete error:', error);
+  const params = new URLSearchParams({ article_name });
+  const res = await fetch(`/api/product-links?${params}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) {
+    console.error('deleteProductLink faalde:', res.status);
     return false;
   }
-  return true;
-}
-
-/** Update a single catalog product's fields. If sku changes, cascade to product_links and catalog_aliases. */
-export async function updateCatalogEntry(
-  oldSku: string,
-  newFields: { sku: string; name: string; ean: string; brand: string }
-): Promise<boolean> {
-  if (oldSku !== newFields.sku) {
-    // Insert new row first
-    const { error: insErr } = await supabase.from(CATALOG_TABLE).insert(newFields);
-    if (insErr) {
-      console.error('Catalog rename insert error:', insErr);
-      return false;
-    }
-    // Update references
-    await supabase.from(LINKS_TABLE).update({ catalog_sku: newFields.sku }).eq('catalog_sku', oldSku);
-    await supabase.from(ALIASES_TABLE).update({ catalog_sku: newFields.sku }).eq('catalog_sku', oldSku);
-    // Delete old row
-    const { error: delErr } = await supabase.from(CATALOG_TABLE).delete().eq('sku', oldSku);
-    if (delErr) {
-      console.error('Catalog rename delete error:', delErr);
-      return false;
-    }
-    return true;
-  }
-  const { error } = await supabase
-    .from(CATALOG_TABLE)
-    .update({ name: newFields.name, ean: newFields.ean, brand: newFields.brand })
-    .eq('sku', oldSku);
-  if (error) {
-    console.error('Catalog update error:', error);
-    return false;
-  }
-  return true;
+  const data = (await res.json()) as { success: boolean };
+  return data.success;
 }
 
 /** Upsert product links */
 export async function upsertProductLinks(links: ProductLink[]): Promise<{ success: boolean; count: number }> {
   if (links.length === 0) return { success: true, count: 0 };
-  const BATCH = 500;
-  let upserted = 0;
-
-  for (let i = 0; i < links.length; i += BATCH) {
-    const batch = links.slice(i, i + BATCH);
-    const { error } = await supabase
-      .from(LINKS_TABLE)
-      .upsert(batch, { onConflict: 'article_name' });
-
-    if (error) {
-      console.error('Supabase links upsert error:', error);
-      return { success: false, count: upserted };
-    }
-    upserted += batch.length;
-  }
-
-  return { success: true, count: upserted };
+  const res = await fetch('/api/product-links', {
+    method: 'POST',
+    headers: authHeaders(JSON_HEADERS),
+    body: JSON.stringify({ links }),
+  });
+  if (!res.ok) return { success: false, count: 0 };
+  return (await res.json()) as { success: boolean; count: number };
 }
