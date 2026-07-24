@@ -1,5 +1,6 @@
 import type { Context } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isAuthorized, unauthorized } from '../shared/auth.mts';
 
 /**
  * /api/data-rows — vervangt rechtstreekse anon-key toegang tot sell_out_data.
@@ -25,13 +26,6 @@ interface DataRow {
 
 const TABLE = 'sell_out_data';
 
-function unauthorized() {
-  return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-    status: 401,
-    headers: { 'content-type': 'application/json' },
-  });
-}
-
 function serverMisconfigured() {
   return new Response(
     JSON.stringify({ error: 'Server is niet correct geconfigureerd (SUPABASE_SERVICE_ROLE_KEY ontbreekt).' }),
@@ -40,9 +34,7 @@ function serverMisconfigured() {
 }
 
 export default async (req: Request, _ctx: Context) => {
-  const apiSecret = process.env.API_SECRET;
-  const authHeader = req.headers.get('authorization') || '';
-  if (!apiSecret || authHeader !== `Bearer ${apiSecret}`) return unauthorized();
+  if (!isAuthorized(req)) return unauthorized();
 
   const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

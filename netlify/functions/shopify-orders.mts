@@ -1,5 +1,6 @@
 import type { Context } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isAuthorized, unauthorized } from '../shared/auth.mts';
 
 interface LineItem {
   order_id: string;
@@ -33,14 +34,7 @@ interface ShopifyLineItem {
 }
 
 export default async (req: Request, _ctx: Context) => {
-  const apiSecret = process.env.API_SECRET;
-  const authHeader = req.headers.get('authorization') || '';
-  if (!apiSecret || authHeader !== `Bearer ${apiSecret}`) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
+  if (!isAuthorized(req)) return unauthorized();
 
   const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

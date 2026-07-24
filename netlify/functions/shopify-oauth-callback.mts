@@ -1,5 +1,6 @@
 import type { Context } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { timingSafeEqual } from 'node:crypto';
 
 /**
  * OAuth callback voor Shopify Partner App custom distribution install.
@@ -29,6 +30,7 @@ export default async (req: Request, _ctx: Context) => {
   const code = url.searchParams.get('code');
   const shop = url.searchParams.get('shop');
   const hmac = url.searchParams.get('hmac');
+  const timestamp = url.searchParams.get('timestamp');
 
   if (!code || !shop) {
     return new Response('Missende query parameters (code of shop).', { status: 400 });
@@ -39,8 +41,22 @@ export default async (req: Request, _ctx: Context) => {
     return new Response('Ongeldige shop URL.', { status: 400 });
   }
 
-  // HMAC verificatie
-  if (hmac) {
+  // HMAC is VERPLICHT. Zonder geldige, door Shopify met de client secret
+  // ondertekende hmac weigeren we de request (voorkomt geforceerde/vervalste
+  // callbacks). Eerder was deze check optioneel (`if (hmac)`), wat betekende
+  // dat het weglaten van de parameter de verificatie volledig oversloeg.
+  if (!hmac) {
+    return new Response('HMAC ontbreekt.', { status: 401 });
+  }
+
+  // Replay-bescherming: Shopify stuurt een unix timestamp mee. Weiger als die
+  // ontbreekt of ouder is dan 5 minuten.
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) {
+    return new Response('Verlopen of ontbrekende timestamp.', { status: 401 });
+  }
+
+  {
     const params = new URLSearchParams(url.search);
     params.delete('hmac');
     params.delete('signature');
@@ -56,7 +72,10 @@ export default async (req: Request, _ctx: Context) => {
     );
     const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
     const sigHex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    if (sigHex !== hmac) {
+    // Constant-time vergelijking (voorkomt timing-side-channel op de hmac).
+    const a = Buffer.from(sigHex);
+    const b = Buffer.from(hmac);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
       return new Response('HMAC verificatie mislukt.', { status: 401 });
     }
   }
