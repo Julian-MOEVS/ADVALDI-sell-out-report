@@ -5,20 +5,34 @@ interface Props {
   onLogin: () => void;
 }
 
-const PASSWORD_HASH = 'Kasheeftau';
-
 export default function LoginScreen({ onLogin }: Props) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
+  const [checking, setChecking] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === PASSWORD_HASH) {
-      sessionStorage.setItem('moevs-auth', '1');
-      onLogin();
-    } else {
+    if (checking) return;
+    setChecking(true);
+    setError(false);
+    try {
+      // Valideer wachtwoord server-side: dit is tevens het API-geheim (bearer)
+      // voor de beveiligde Netlify Functions. 200 = correct, anders fout.
+      const res = await fetch('/api/shopify-status', {
+        headers: { Authorization: `Bearer ${password}` },
+      });
+      if (res.ok) {
+        sessionStorage.setItem('moevs-auth', '1');
+        sessionStorage.setItem('moevs-secret', password);
+        onLogin();
+      } else {
+        setError(true);
+        setPassword('');
+      }
+    } catch {
       setError(true);
-      setPassword('');
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -51,9 +65,10 @@ export default function LoginScreen({ onLogin }: Props) {
           </div>
           <button
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-accent-light to-accent text-white rounded-2xl hover:opacity-90 transition text-sm font-semibold shadow-lg"
+            disabled={checking || !password}
+            className="w-full py-3 bg-gradient-to-r from-accent-light to-accent text-white rounded-2xl hover:opacity-90 transition text-sm font-semibold shadow-lg disabled:opacity-50"
           >
-            Inloggen
+            {checking ? 'Controleren...' : 'Inloggen'}
           </button>
         </form>
       </div>
