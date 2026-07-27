@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { deleteChannelWeeks, insertRows, fetchAllRows } from '../lib/supabase';
+import { authHeaders } from '../lib/api';
 import type { DataRow } from '../types';
 import { ShoppingBag, Info, RefreshCw, CheckCircle, AlertTriangle, Zap } from 'lucide-react';
 
@@ -61,16 +62,23 @@ export default function Shopify() {
   const [message, setMessage] = useState('');
   const [stats, setStats] = useState<{ orders: number; lineItems: number; sales: number; weeks: number } | null>(null);
   const [shopifyStatus, setShopifyStatus] = useState<ShopifyStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/shopify-status');
+      const res = await fetch('/api/shopify-status', { headers: authHeaders() });
       if (res.ok) {
         const data = (await res.json()) as ShopifyStatus;
         setShopifyStatus(data);
+        setStatusError(null);
+      } else {
+        // Vorige versie slikte dit stil in en toonde "geen eerdere sync",
+        // ook als er wél een sync-datum in de database stond. Nu tonen we
+        // de echte oorzaak (401/429/500) i.p.v. te doen alsof er niets is.
+        setStatusError(`Status ophalen mislukt (HTTP ${res.status}). Probeer de pagina te verversen.`);
       }
-    } catch {
-      // Status is informational, geen hard error
+    } catch (e) {
+      setStatusError(`Status ophalen mislukt: ${e instanceof Error ? e.message : 'netwerkfout'}.`);
     }
   }, []);
 
@@ -91,7 +99,7 @@ export default function Shopify() {
       const params = new URLSearchParams({ from: fromDate });
       if (toDate) params.set('to', toDate);
 
-      const res = await fetch(`/api/shopify-orders?${params.toString()}`);
+      const res = await fetch(`/api/shopify-orders?${params.toString()}`, { headers: authHeaders() });
       let payload: { error?: string; items?: ShopifyLineItem[] };
       try {
         payload = await res.json();
@@ -201,7 +209,7 @@ export default function Shopify() {
       try {
         await fetch('/api/shopify-mark-synced', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: authHeaders({ 'content-type': 'application/json' }),
           body: JSON.stringify({ syncedTo }),
         });
         refreshStatus();
@@ -268,20 +276,32 @@ export default function Shopify() {
           <h3 className="text-sm font-medium">Auto Sync (sinds laatste sync)</h3>
         </div>
         <p className="text-xs text-dark/60">
-          {shopifyStatus?.lastSyncedTo ? (
+          {statusError ? (
+            <span className="text-danger">{statusError}</span>
+          ) : shopifyStatus?.lastSyncedTo ? (
             <>Laatste sync: <strong className="text-dark">{formatDateNL(shopifyStatus.lastSyncedTo)}</strong>. Bij klik wordt vanaf 1 dag vóór die datum tot vandaag opnieuw opgehaald (replace-mode, dubbele orders kunnen niet ontstaan).</>
-          ) : (
+          ) : shopifyStatus ? (
             <>Nog geen eerdere sync. Doe eerst hieronder een volledige sync met expliciete datums.</>
+          ) : (
+            <>Status laden...</>
           )}
         </p>
         <button
           onClick={handleAutoSync}
-          disabled={status === 'loading' || !shopifyStatus?.lastSyncedTo}
+          disabled={status === 'loading' || !!statusError || !shopifyStatus?.lastSyncedTo}
           className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-accent-light to-accent text-white rounded-lg hover:opacity-90 transition disabled:opacity-50 text-sm"
         >
           <Zap size={14} />
           {status === 'loading' ? 'Synchroniseren...' : 'Auto Sync'}
         </button>
+        {statusError && (
+          <button
+            onClick={() => { setStatusError(null); refreshStatus(); }}
+            className="text-xs text-accent underline"
+          >
+            Opnieuw proberen
+          </button>
+        )}
       </div>
 
       <div className="bg-white border border-bg4 rounded-3xl shadow-sm p-5 space-y-4">
