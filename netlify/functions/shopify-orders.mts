@@ -182,8 +182,14 @@ export default async (req: Request, _ctx: Context) => {
 
     if (!res.ok) {
       const text = await res.text();
+      // 401 van Shopify zelf (niet onze eigen auth) betekent vrijwel altijd dat
+      // de shop de app heeft verwijderd, waardoor Shopify het token introk.
+      const friendlyError =
+        res.status === 401
+          ? 'De Shopify-koppeling is niet meer geldig. Dit gebeurt meestal doordat de app uit de Shopify-winkel is verwijderd, waardoor het token automatisch is ingetrokken. Installeer de app opnieuw via de Partners install-link om te kunnen synchroniseren.'
+          : `Shopify API fout ${res.status}`;
       return new Response(
-        JSON.stringify({ error: `Shopify API fout ${res.status}`, detail: text }),
+        JSON.stringify({ error: friendlyError, detail: text }),
         { status: 502, headers: { 'content-type': 'application/json' } }
       );
     }
