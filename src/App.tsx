@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useAppStore } from './store/useAppStore';
+import { useEffect, useState } from 'react';
+import { useAppStore, loadRemoteData } from './store/useAppStore';
 import Sidebar from './components/layout/Sidebar';
 import Topbar from './components/layout/Topbar';
 import LoginScreen from './components/layout/LoginScreen';
@@ -36,6 +36,23 @@ const pages: Record<string, { title: string; component: React.FC }> = {
 export default function App() {
   const { activePage } = useAppStore();
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('moevs-auth') === '1');
+
+  // Data laden zodra we geauthenticeerd zijn (de API-endpoints vereisen de
+  // secret die pas bij login beschikbaar is). Bij een 401 (bv. na wachtwoord-
+  // rotatie: oude secret nog in sessionStorage) sessie wissen en terug naar login.
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    loadRemoteData().then((r) => {
+      if (cancelled) return;
+      if (r.unauthorized) {
+        sessionStorage.removeItem('moevs-auth');
+        sessionStorage.removeItem('moevs-secret');
+        setAuthed(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [authed]);
 
   if (!authed) {
     return <LoginScreen onLogin={() => setAuthed(true)} />;

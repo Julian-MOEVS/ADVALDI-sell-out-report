@@ -134,23 +134,33 @@ export const useAppStore = create<AppState & AppActions>()(
   )
 );
 
-// Load data, catalog, links, and aliases from Supabase on app start.
-// Settle elk endpoint apart zodat één failure niet alles blokkeert.
-Promise.allSettled([
-  fetchAllRows(),
-  fetchCatalog(),
-  fetchProductLinks(),
-  fetchCatalogAliases(),
-]).then(([rowsR, catalogR, linksR, aliasesR]) => {
+// Laad data, catalogus, links en aliases uit de beveiligde API.
+// MOET ná login draaien: de endpoints vereisen nu de Bearer-secret die pas bij
+// het inloggen in sessionStorage komt. Wordt aangeroepen vanuit App.tsx zodra
+// de gebruiker geauthenticeerd is. Settle elk endpoint apart zodat één failure
+// niet alles blokkeert. Retourneert `unauthorized` zodat App bij een 401 (bv.
+// na wachtwoord-rotatie) terug naar het loginscherm kan sturen.
+export async function loadRemoteData(): Promise<{ ok: boolean; unauthorized: boolean }> {
+  const [rowsR, catalogR, linksR, aliasesR] = await Promise.allSettled([
+    fetchAllRows(),
+    fetchCatalog(),
+    fetchProductLinks(),
+    fetchCatalogAliases(),
+  ]);
   if (rowsR.status === 'fulfilled') {
     useAppStore.setState({ userData: rowsR.value });
   } else {
-    console.error('fetchAllRows op startup faalde:', rowsR.reason);
+    console.error('fetchAllRows faalde:', rowsR.reason);
   }
   if (catalogR.status === 'fulfilled') setDynamicCatalog(catalogR.value);
-  else console.error('fetchCatalog op startup faalde:', catalogR.reason);
+  else console.error('fetchCatalog faalde:', catalogR.reason);
   if (linksR.status === 'fulfilled') setProductLinks(linksR.value);
-  else console.error('fetchProductLinks op startup faalde:', linksR.reason);
+  else console.error('fetchProductLinks faalde:', linksR.reason);
   if (aliasesR.status === 'fulfilled') setCatalogAliases(aliasesR.value);
-  else console.error('fetchCatalogAliases op startup faalde:', aliasesR.reason);
-});
+  else console.error('fetchCatalogAliases faalde:', aliasesR.reason);
+
+  const unauthorized =
+    rowsR.status === 'rejected' &&
+    String((rowsR.reason as Error)?.message ?? rowsR.reason).includes('401');
+  return { ok: rowsR.status === 'fulfilled', unauthorized };
+}
