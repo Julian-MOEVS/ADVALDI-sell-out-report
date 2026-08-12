@@ -156,12 +156,105 @@ export default async (req: Request, _ctx: Context) => {
   }
 
   if (req.method === 'PATCH') {
-    let body: { channel?: string; fromPattern?: string; toBrand?: string };
+    let body: { channel?: string; fromPattern?: string; toBrand?: string; mode?: string };
     try {
       body = await req.json();
     } catch {
       return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { 'content-type': 'application/json' } });
     }
+
+    // mode 'rebrand-statistics': herstel merken van export_statistics-rijen
+    // (Brincr / Shopify) die hardcoded 'Pure Electric' kregen, o.b.v. de
+    // productcatalogus. Zelfde afleiding als inferStatisticsBrand in de client.
+    if (body.mode === 'rebrand-statistics') {
+      const STAT_CHANNELS = ['Brincr', 'Shopify', 'Shopify - D2C'];
+      const BRAND_MAP: Record<string, string> = { 'pure': 'Pure Electric', 'purel': 'Pure Electric', 'pure electric': 'Pure Electric' };
+      const normBrand = (raw: string) => BRAND_MAP[raw.toLowerCase()] ?? raw;
+
+      const fetchAll = async (table: string, cols: string) => {
+        const out: Record<string, string>[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await supabase.from(table).select(cols).range(from, from + 999);
+          if (error) throw new Error(`${table}: ${error.message}`);
+          out.push(...((data || []) as Record<string, string>[]));
+          if (!data || data.length < 1000) break;
+        }
+        return out;
+      };
+
+      try {
+        const catalog = await fetchAll('product_catalog', 'sku, name, brand');
+        const aliases = await fetchAll('catalog_aliases', 'catalog_sku, alias_sku');
+        const links = await fetchAll('product_links', 'article_name, catalog_sku');
+
+        const bySku: Record<string, { brand?: string }> = {};
+        const byName: Record<string, { brand?: string }> = {};
+        const aliasSku: Record<string, string> = {};
+        const linkByName: Record<string, string> = {};
+        for (const c of catalog) { bySku[c.sku] = c; if (c.name) byName[c.name.toLowerCase()] = c; }
+        for (const a of aliases) if (a.alias_sku) aliasSku[a.alias_sku] = a.catalog_sku;
+        for (const l of links) linkByName[l.article_name] = l.catalog_sku;
+
+        const inferBrand = (an: string, sku: string): string => {
+          const entry = (sku && bySku[sku])
+            || (sku && aliasSku[sku] ? bySku[aliasSku[sku]] : undefined)
+            || bySku[an]
+            || (linkByName[an] ? bySku[linkByName[an]] : undefined)
+            || byName[an.toLowerCase()];
+          const brand = entry?.brand?.trim();
+          if (brand) return normBrand(brand);
+          const lower = an.toLowerCase();
+          for (const c of catalog) {
+            const b = c.brand?.trim();
+            if (b && lower.includes(b.toLowerCase())) return normBrand(b);
+          }
+          return 'Pure Electric';
+        };
+
+        const rows: { an: string; sku: string }[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await supabase.from(TABLE)
+            .select('an, sku')
+            .in('ch', STAT_CHANNELS).eq('mfr', 'Pure Electric')
+            .range(from, from + 999);
+          if (error) throw new Error(`select: ${error.message}`);
+          rows.push(...((data || []) as { an: string; sku: string }[]));
+          if (!data || data.length < 1000) break;
+        }
+
+        // Per uniek artikel het juiste merk bepalen en gericht bijwerken
+        const seen = new Set<string>();
+        const changes: { an: string; sku: string; brand: string }[] = [];
+        for (const r of rows) {
+          const k = `${r.an} ${r.sku || ''}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          const brand = inferBrand(r.an, r.sku || '');
+          if (brand !== 'Pure Electric') changes.push({ an: r.an, sku: r.sku || '', brand });
+        }
+
+        let updated = 0;
+        for (const c of changes) {
+          const { error, count } = await supabase.from(TABLE)
+            .update({ mfr: c.brand }, { count: 'exact' })
+            .in('ch', STAT_CHANNELS).eq('mfr', 'Pure Electric')
+            .eq('an', c.an).eq('sku', c.sku);
+          if (error) throw new Error(`update ${c.an}: ${error.message}`);
+          updated += count || 0;
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, updated, articles: changes.map((c) => `${c.an} → ${c.brand}`) }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ success: false, updated: 0, error: e instanceof Error ? e.message : 'onbekende fout' }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+    }
+
     const { channel, fromPattern, toBrand } = body;
     if (!channel || !fromPattern || !toBrand) {
       return new Response(JSON.stringify({ error: 'channel, fromPattern en toBrand zijn verplicht' }), { status: 400, headers: { 'content-type': 'application/json' } });

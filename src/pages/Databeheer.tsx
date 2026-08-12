@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { EMBEDDED_DATA } from '../lib/data';
-import { matchToCatalog } from '../lib/catalog';
-import { fetchImports, deleteInvalidWeekRows, normalizeChannelBrand, fetchAllRows, type ImportBatch } from '../lib/supabase';
+import { matchToCatalog, getCatalogBySku } from '../lib/catalog';
+import { fetchImports, deleteInvalidWeekRows, normalizeChannelBrand, rebrandStatisticsRows, fetchAllRows, type ImportBatch } from '../lib/supabase';
 import ChannelPill from '../components/ui/ChannelPill';
 import { Database, Download, Trash2, RotateCcw, Search, FileSpreadsheet, Wrench } from 'lucide-react';
 
@@ -25,6 +25,19 @@ export default function Databeheer() {
 
   const pureVariantCount = useMemo(
     () => data.filter((r) => (r.ch === 'Shopify' || r.ch === 'Shopify - D2C') && /pure/i.test(r.mfr) && r.mfr !== 'Pure Electric').length,
+    [data]
+  );
+
+  // Export_statistics-rijen (Brincr/Shopify) die als 'Pure Electric' staan terwijl
+  // de catalogus een ander merk zegt (historische imports vóór de merk-afleiding).
+  const misbrandedCount = useMemo(
+    () => data.filter((r) => {
+      if (r.mfr !== 'Pure Electric') return false;
+      if (r.ch !== 'Brincr' && r.ch !== 'Shopify' && r.ch !== 'Shopify - D2C') return false;
+      const sku = matchToCatalog(r.an, r.ean, r.sku);
+      const brand = sku ? getCatalogBySku(sku)?.brand?.trim() : undefined;
+      return !!brand && !/^pure/i.test(brand);
+    }).length,
     [data]
   );
 
@@ -152,7 +165,7 @@ export default function Databeheer() {
         </div>
 
         {/* Cleanup tools */}
-        {(invalidWeekCount > 0 || pureVariantCount > 0) && (
+        {(invalidWeekCount > 0 || pureVariantCount > 0 || misbrandedCount > 0) && (
           <div className="mt-4 pt-4 border-t border-bg4">
             <h4 className="text-xs font-medium text-dark/50 uppercase tracking-wide mb-2 flex items-center gap-1">
               <Wrench size={12} /> Cleanup tools
@@ -200,6 +213,27 @@ export default function Databeheer() {
                   className="flex items-center gap-2 px-3 py-2 bg-info/10 text-info rounded-lg hover:bg-info/20 transition text-sm"
                 >
                   <Wrench size={14} /> Normaliseer {pureVariantCount} Pure-variant(en)
+                </button>
+              )}
+              {misbrandedCount > 0 && (
+                <button
+                  onClick={async () => {
+                    if (!confirm(`${misbrandedCount} Brincr/Shopify-rijen staan als 'Pure Electric' terwijl de catalogus een ander merk zegt. Merken herstellen uit de catalogus?`)) return;
+                    setCleanupStatus('Merken herstellen...');
+                    const res = await rebrandStatisticsRows();
+                    if (res.success) {
+                      try {
+                        const fresh = await fetchAllRows();
+                        useAppStore.setState({ userData: fresh });
+                      } catch {}
+                      setCleanupStatus(`${res.updated} rij(en) hersteld: ${(res.articles || []).join(', ') || 'geen wijzigingen'}.`);
+                    } else {
+                      setCleanupStatus('Merkherstel faalde. Check console.');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-info/10 text-info rounded-lg hover:bg-info/20 transition text-sm"
+                >
+                  <Wrench size={14} /> Herstel {misbrandedCount} verkeerde merk-rij(en)
                 </button>
               )}
             </div>

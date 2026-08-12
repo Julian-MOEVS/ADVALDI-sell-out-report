@@ -99,6 +99,17 @@ export async function normalizeChannelBrand(
   return (await res.json()) as { updated: number; success: boolean };
 }
 
+/** Herstel merken van export_statistics-rijen (Brincr/Shopify) die hardcoded 'Pure Electric' kregen, o.b.v. de catalogus (server-side). */
+export async function rebrandStatisticsRows(): Promise<{ updated: number; success: boolean; articles?: string[] }> {
+  const res = await fetch('/api/data-rows', {
+    method: 'PATCH',
+    headers: authHeaders(JSON_HEADERS),
+    body: JSON.stringify({ mode: 'rebrand-statistics' }),
+  });
+  if (!res.ok) return { updated: 0, success: false };
+  return (await res.json()) as { updated: number; success: boolean; articles?: string[] };
+}
+
 /* ── Catalog aliases (extra SKUs/EANs per catalog product) ── */
 
 export interface CatalogAlias {
