@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
 import type { CatalogEntry } from './supabase';
 import { stockForArticle, resolveProductKey, resolvedDisplayName, monthLabel, branchOf } from './filters';
+import { matchToCatalog, getCatalogBySku, getDynamicCatalog } from './catalog';
 
 interface ColMap {
   week: number;
@@ -647,6 +648,27 @@ function parseCSVLine(line: string): string[] {
 
 /* ── Export Statistics parser (Shopify / Brincr Portaal) ── */
 
+/**
+ * Leid het merk af voor een export_statistics-regel. Deze bestanden bevatten
+ * geen merkkolom; voorheen kreeg elke rij hardcoded 'Pure Electric', waardoor
+ * bijv. NAVEE-steps onder het verkeerde merk belandden. We zoeken daarom het
+ * artikel op in de catalogus (op SKU/omschrijving) en gebruiken dat merk;
+ * lukt dat niet, dan herkennen we een bekend catalogusmerk in de omschrijving.
+ */
+function inferStatisticsBrand(articleName: string, sku: string): string {
+  const catalogSku = matchToCatalog(articleName, undefined, sku);
+  if (catalogSku) {
+    const brand = getCatalogBySku(catalogSku)?.brand?.trim();
+    if (brand) return normalizeBrand(brand);
+  }
+  const lower = articleName.toLowerCase();
+  for (const entry of getDynamicCatalog()) {
+    const brand = entry.brand?.trim();
+    if (brand && lower.includes(brand.toLowerCase())) return normalizeBrand(brand);
+  }
+  return 'Pure Electric';
+}
+
 export function parseExportStatistics(
   file: File,
   channel: string,
@@ -703,7 +725,7 @@ export function parseExportStatistics(
             if (!week || !currentOmschr) continue;
 
             rows.push({
-              w: week, rg: market, mfr: 'Pure Electric', pg: '',
+              w: week, rg: market, mfr: inferStatisticsBrand(currentOmschr, currentSku), pg: '',
               an: currentOmschr, ean: '', sku: currentSku,
               ch: channel,
               st: isShopify ? channel : bedrijf,
@@ -730,7 +752,7 @@ export function parseExportStatistics(
             if (!omschr) continue;
 
             rows.push({
-              w: week || 'onbekend', rg: market, mfr: 'Pure Electric', pg: '',
+              w: week || 'onbekend', rg: market, mfr: inferStatisticsBrand(omschr, artNr), pg: '',
               an: omschr, ean: '', sku: artNr,
               ch: channel, st: '', sl: channel,
               p: 0, s: producten, k: 0,
