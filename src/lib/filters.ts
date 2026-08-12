@@ -117,6 +117,63 @@ export function monthLabelShort(month: string): string {
   return `${MONTH_NAMES_NL_SHORT[m - 1]} '${String(y).slice(-2)}`;
 }
 
+/** Weergavenaam van een kanaal (Shopify-varianten → 'Shopify - D2C'), consistent met channels(). */
+export function channelDisplay(ch: string): string {
+  const key = normalizeChannel(ch);
+  return key === 'shopify - d2c' ? 'Shopify - D2C' : (ch || '').trim();
+}
+
+/**
+ * Verkoop-tak per land van een rij. Voor Media Markt de tak uit het winkel-label
+ * ("Media Markt Belgium" / "Online Belgium" / "Media Markt Luxembourg" / "Media
+ * Markt Netherlands" / "Online Netherlands"), met voorloopnummers gestript zodat
+ * oud ("18 Media Markt Belgium") en nieuw ("Media Markt Belgium") samenvallen.
+ * Oude NL-data zonder tak-prefix wordt afgeleid uit online-heuristiek + land.
+ * Voor overige kanalen is het kanaal zelf de tak (FNAC, Shopify - D2C, Vanden
+ * Borre, Brincr).
+ */
+export function branchOf(r: DataRow): string {
+  const ch = channelDisplay(r.ch);
+  if (!ch.startsWith('MM-')) return ch || r.ch || '—';
+  const sl = (r.sl || '').trim();
+  const slash = sl.indexOf(' / ');
+  if (slash > 0) return sl.slice(0, slash).replace(/^\s*\d+\s+/, '').trim();
+  const online = /online/i.test(sl);
+  const country = r.ch === 'MM-BE' ? 'Belgium' : 'Netherlands';
+  return `${online ? 'Online' : 'Media Markt'} ${country}`;
+}
+
+/** Maandag van een ISO-week "YYYYWW" (UTC): donderdag - 3 dagen. */
+export function isoWeekMonday(week: string): Date | null {
+  const t = isoWeekThursday(week);
+  if (!t) return null;
+  const mon = new Date(t);
+  mon.setUTCDate(t.getUTCDate() - 3);
+  return mon;
+}
+
+/** ISO-weken die in een maand ("YYYY-MM") vallen, oplopend gesorteerd. */
+export function weeksInMonth(data: DataRow[], month: string): string[] {
+  return [...new Set(data.filter((r) => weekToMonth(r.w) === month).map((r) => r.w).filter(isValidWeek))].sort();
+}
+
+/** Datumbereik-label voor een set weken (ma van eerste week t/m zo van laatste), bijv. "1 - 28 jun 2026". */
+export function weeksDateRangeLabel(weeks: string[]): string {
+  const valid = weeks.filter(isValidWeek).sort();
+  if (valid.length === 0) return '';
+  const mon = isoWeekMonday(valid[0]);
+  const lastMon = isoWeekMonday(valid[valid.length - 1]);
+  if (!mon || !lastMon) return '';
+  const sun = new Date(lastMon);
+  sun.setUTCDate(lastMon.getUTCDate() + 6);
+  const M = MONTH_NAMES_NL_SHORT;
+  const dM = mon.getUTCDate(), mM = M[mon.getUTCMonth()], yM = mon.getUTCFullYear();
+  const dS = sun.getUTCDate(), mS = M[sun.getUTCMonth()], yS = sun.getUTCFullYear();
+  if (yM !== yS) return `${dM} ${mM} ${yM} - ${dS} ${mS} ${yS}`;
+  if (mM !== mS) return `${dM} ${mM} - ${dS} ${mS} ${yM}`;
+  return `${dM} - ${dS} ${mM} ${yM}`;
+}
+
 export function sum(rows: DataRow[], key: 's' | 'p' | 'k'): number {
   return rows.reduce((a, r) => a + r[key], 0);
 }

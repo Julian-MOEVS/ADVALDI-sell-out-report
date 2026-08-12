@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import {
-  filteredMonth, months, monthLabel, monthLabelShort, weekToMonth,
+  months, monthLabel, monthLabelShort, weekToMonth, channelDisplay,
+  weeksInMonth, weeksDateRangeLabel,
   sum, groupBy, stockForArticle, stockForData,
   resolveProductKey, resolvedDisplayName, resolveStoreKey, channels,
 } from '../lib/filters';
@@ -16,19 +17,22 @@ export default function MonthView() {
   const allMonths = months(data);
 
   const [activeMonth, setActiveMonth] = useState(allMonths[allMonths.length - 1] || '');
-  const [activeChannel, setActiveChannel] = useState<'all' | string>('all');
+  // Uitgesloten kanalen (leeg = alles aan). Zo kun je bijv. FNAC + Vanden Borre eruit rekenen.
+  const [disabledChannels, setDisabledChannels] = useState<Set<string>>(new Set());
 
-  const rows = useMemo(() => filteredMonth(data, activeMonth, activeChannel), [data, activeMonth, activeChannel]);
-  const monthChannels = useMemo(
-    () => channels(data.filter((r) => weekToMonth(r.w) === activeMonth)),
-    [data, activeMonth]
+  const monthRows = useMemo(() => data.filter((r) => weekToMonth(r.w) === activeMonth), [data, activeMonth]);
+  const monthChannels = useMemo(() => channels(monthRows), [monthRows]);
+  const monthWeeks = useMemo(() => weeksInMonth(data, activeMonth), [data, activeMonth]);
+  const rows = useMemo(
+    () => monthRows.filter((r) => !disabledChannels.has(channelDisplay(r.ch))),
+    [monthRows, disabledChannels]
   );
 
   const prevMonthIdx = allMonths.indexOf(activeMonth);
   const prevMonth = prevMonthIdx > 0 ? allMonths[prevMonthIdx - 1] : null;
   const prevRows = useMemo(
-    () => (prevMonth ? filteredMonth(data, prevMonth, activeChannel) : []),
-    [data, prevMonth, activeChannel]
+    () => (prevMonth ? data.filter((r) => weekToMonth(r.w) === prevMonth && !disabledChannels.has(channelDisplay(r.ch))) : []),
+    [data, prevMonth, disabledChannels]
   );
 
   const totalSales = sum(rows, 's');
@@ -101,7 +105,18 @@ export default function MonthView() {
       .sort((a, b) => b.sales - a.sales);
   }, [rows, aliases]);
 
-  const channelLabel = activeChannel === 'all' ? 'Alle kanalen' : activeChannel;
+  const enabledChannels = monthChannels.filter((c) => !disabledChannels.has(c));
+  const channelLabel = disabledChannels.size === 0
+    ? 'Alle kanalen'
+    : enabledChannels.length === 0
+      ? 'Geen kanalen'
+      : enabledChannels.join(', ');
+  const toggleChannel = (ch: string) =>
+    setDisabledChannels((prev) => {
+      const next = new Set(prev);
+      if (next.has(ch)) next.delete(ch); else next.add(ch);
+      return next;
+    });
 
   if (allMonths.length === 0) {
     return <div className="text-center text-dark/40 py-12">Geen data beschikbaar. Importeer eerst Excel-bestanden.</div>;
@@ -125,35 +140,43 @@ export default function MonthView() {
         ))}
       </div>
 
-      {/* Actieve maand-header */}
+      {/* Actieve periode-header: maand + exacte volle-weken en datumbereik */}
       {activeMonth && (
-        <div className="flex items-center gap-2 text-sm text-dark/60">
+        <div className="flex items-center gap-2 text-sm text-dark/60 flex-wrap">
           <Calendar size={14} className="text-accent" />
-          <span>Maand · <strong className="text-dark">{monthLabel(activeMonth)}</strong></span>
+          <span><strong className="text-dark">{monthLabel(activeMonth)}</strong></span>
+          {monthWeeks.length > 0 && (
+            <span className="text-dark/40">
+              · W{monthWeeks[0].slice(-2)}{monthWeeks.length > 1 ? `-W${monthWeeks[monthWeeks.length - 1].slice(-2)}` : ''} · {weeksDateRangeLabel(monthWeeks)}
+            </span>
+          )}
         </div>
       )}
 
-      {/* Kanaalfilter */}
+      {/* Kanalen: multi-select. Klik een kanaal aan/uit; uitgezette kanalen tellen nergens mee. */}
       <div className="flex gap-2 items-center flex-wrap">
-        <button
-          onClick={() => setActiveChannel('all')}
-          className={`px-3 py-1.5 rounded-lg text-sm transition ${
-            activeChannel === 'all' ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/50 hover:text-dark'
-          }`}
-        >
-          Alle kanalen
-        </button>
-        {monthChannels.map((ch) => (
-          <button
-            key={ch}
-            onClick={() => setActiveChannel(ch)}
-            className={`px-3 py-1.5 rounded-lg text-sm transition ${
-              ch === activeChannel ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/50 hover:text-dark'
-            }`}
-          >
-            {ch}
-          </button>
-        ))}
+        <span className="text-xs uppercase tracking-wide text-dark/40 mr-1">Kanalen:</span>
+        {monthChannels.map((ch) => {
+          const on = !disabledChannels.has(ch);
+          return (
+            <button
+              key={ch}
+              onClick={() => toggleChannel(ch)}
+              title={on ? 'Klik om dit kanaal uit te sluiten' : 'Klik om weer mee te tellen'}
+              className={`px-3 py-1.5 rounded-lg text-sm transition ${
+                on ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/40 hover:text-dark line-through'
+              }`}
+            >
+              {ch}
+            </button>
+          );
+        })}
+        {monthChannels.length > 1 && (
+          <div className="flex gap-1 ml-1 text-xs">
+            <button onClick={() => setDisabledChannels(new Set())} className="px-2 py-1.5 rounded-lg bg-bg text-dark/50 hover:text-dark">Alles aan</button>
+            <button onClick={() => setDisabledChannels(new Set(monthChannels))} className="px-2 py-1.5 rounded-lg bg-bg text-dark/50 hover:text-dark">Alles uit</button>
+          </div>
+        )}
       </div>
 
       {/* KPI */}
@@ -245,7 +268,7 @@ export default function MonthView() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-dark/60">Merk-breakdown</h3>
           <button
-            onClick={() => exportMonthTotalExcel(activeMonth, channelLabel, rows, aliases)}
+            onClick={() => exportMonthTotalExcel(activeMonth, weeksDateRangeLabel(monthWeeks), channelLabel, rows, aliases)}
             className="flex items-center gap-1 text-xs text-accent hover:text-accent/80"
             title="Exporteert één Excel-tabblad met per product het totaal verkochte aantal (winkels/verkopers opgeteld) voor de gekozen maand"
           >

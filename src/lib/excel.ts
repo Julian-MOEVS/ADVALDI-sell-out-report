@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
 import type { CatalogEntry } from './supabase';
-import { stockForArticle, resolveProductKey, resolvedDisplayName, monthLabel } from './filters';
+import { stockForArticle, resolveProductKey, resolvedDisplayName, monthLabel, branchOf } from './filters';
 
 interface ColMap {
   week: number;
@@ -493,20 +493,29 @@ export function exportBrandExcel(
 }
 
 /**
- * SOA maand-totaaloverzicht: één tabblad per merk. Binnen elk merk staat per
- * product één regel met het totaal verkochte aantal, opgeteld over alle
- * winkels/verkopers en kanalen samen (geen splitsing per verkoper) plus een
- * TOTAAL-regel. `rows` is al gefilterd op de gekozen maand + het actieve
- * kanaalfilter; `month` is een maandsleutel "YYYY-MM".
+ * SOA maand-totaaloverzicht: één tabblad per merk, met per product een kolom per
+ * kanaal (MM-NL, MM-BE, FNAC, Shopify - D2C, Vanden Borre, ...) plus een Totaal-
+ * en Voorraad-kolom en een TOTAAL-regel. `rows` is al gefilterd op de gekozen
+ * maand + de aangevinkte kanalen; `periodLabel` is het datumbereik van de volle
+ * weken (bijv. "1 - 28 jun 2026"); `month` is een maandsleutel "YYYY-MM".
  */
 export function exportMonthTotalExcel(
   month: string,
+  periodLabel: string,
   channelLabel: string,
   rows: DataRow[],
   aliases: Record<string, string>
 ): void {
-  // 1. Groepeer rijen per merk (case/whitespace-insensitief, meest-voorkomende
-  //    casing als weergave), zodat 'PURE' / 'Pure Electric' in één blad belanden.
+  // Kolommen = verkoop-takken per land (Media Markt NL, Online NL, Media Markt BE,
+  // Online BE, Media Markt LU, FNAC, Shopify - D2C, ...), op omzet gesorteerd.
+  const chTotals: Record<string, number> = {};
+  for (const r of rows) {
+    const tak = branchOf(r) || '—';
+    chTotals[tak] = (chTotals[tak] || 0) + r.s;
+  }
+  const channelCols = Object.keys(chTotals).sort((a, b) => (chTotals[b] - chTotals[a]) || a.localeCompare(b));
+
+  // Groepeer rijen per merk (case/whitespace-insensitief, meest-voorkomende casing).
   const brandBuckets: Record<string, { labelCounts: Record<string, number>; rows: DataRow[] }> = {};
   for (const r of rows) {
     const key = (r.mfr || '').trim().toLowerCase() || 'onbekend merk';
@@ -516,50 +525,52 @@ export function exportMonthTotalExcel(
     bucket.rows.push(r);
   }
 
-  // 2. Bouw per merk de productlijst (geaggregeerd per product) + merk-totaal.
+  interface Item { name: string; perCh: Record<string, number>; sold: number; stock: number }
   const brands = Object.values(brandBuckets)
     .map((bucket) => {
       const brand = Object.entries(bucket.labelCounts).sort((a, b) => b[1] - a[1])[0][0];
       const products: Record<string, DataRow[]> = {};
-      for (const r of bucket.rows) {
-        const pk = resolveProductKey(r);
-        (products[pk] ||= []).push(r);
-      }
-      const items = Object.entries(products)
-        .map(([pk, grp]) => ({
-          name: resolvedDisplayName(pk, aliases),
-          sold: grp.reduce((a, r) => a + r.s, 0),
-          stock: stockForArticle(grp),
-        }))
+      for (const r of bucket.rows) (products[resolveProductKey(r)] ||= []).push(r);
+      const items: Item[] = Object.entries(products)
+        .map(([pk, grp]) => {
+          const perCh: Record<string, number> = {};
+          for (const r of grp) {
+            const c = branchOf(r) || '—';
+            perCh[c] = (perCh[c] || 0) + r.s;
+          }
+          return { name: resolvedDisplayName(pk, aliases), perCh, sold: grp.reduce((a, r) => a + r.s, 0), stock: stockForArticle(grp) };
+        })
         .filter((p) => p.sold !== 0 || p.stock > 0)
         .sort((a, b) => b.sold - a.sold || b.stock - a.stock || a.name.localeCompare(b.name));
-      const totalSold = items.reduce((a, p) => a + p.sold, 0);
-      return { brand, items, totalSold };
+      return { brand, items, totalSold: items.reduce((a, p) => a + p.sold, 0) };
     })
     .filter((b) => b.items.length > 0)
     .sort((a, b) => b.totalSold - a.totalSold || a.brand.localeCompare(b.brand));
 
-  const HEADER: (string | number)[] = ['Product', 'Aantal verkocht', 'Voorraad einde maand'];
+  const HEADER: (string | number)[] = ['Product', ...channelCols, 'Totaal', 'Voorraad einde maand'];
+  const cell = (n: number): string | number => (n === 0 ? '' : n);
 
-  const buildBrandSheet = (title: string, items: { name: string; sold: number; stock: number }[]): XLSX.WorkSheet => {
+  const buildBrandSheet = (title: string, items: Item[]): XLSX.WorkSheet => {
     const data: (string | number)[][] = [
-      [title, '', ''],
-      ['', '', ''],
+      [title, ...HEADER.slice(1).map(() => '')],
+      HEADER.map(() => ''),
       HEADER,
     ];
+    const totPerCh: Record<string, number> = {};
     let totSold = 0, totStock = 0;
     for (const p of items) {
+      for (const c of channelCols) totPerCh[c] = (totPerCh[c] || 0) + (p.perCh[c] || 0);
       totSold += p.sold;
       totStock += p.stock;
-      data.push([p.name, p.sold, p.stock || '']);
+      data.push([p.name, ...channelCols.map((c) => cell(p.perCh[c] || 0)), cell(p.sold), p.stock || '']);
     }
-    data.push(['', '', '']);
-    data.push(['TOTAAL', totSold, totStock || '']);
+    data.push(HEADER.map(() => ''));
+    data.push(['TOTAAL', ...channelCols.map((c) => cell(totPerCh[c] || 0)), cell(totSold), totStock || '']);
 
     const ws = XLSX.utils.aoa_to_sheet(data);
     for (let c = 0; c < HEADER.length; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r: 2, c })];
-      if (cell) cell.s = { ...(cell.s || {}), font: { bold: true }, alignment: { wrapText: true } };
+      const hc = ws[XLSX.utils.encode_cell({ r: 2, c })];
+      if (hc) hc.s = { ...(hc.s || {}), font: { bold: true }, alignment: { wrapText: true } };
     }
     autoWidth(ws, data);
     return ws;
@@ -567,20 +578,19 @@ export function exportMonthTotalExcel(
 
   const wb = XLSX.utils.book_new();
   const usedSheetNames = new Set<string>();
-  const period = `${monthLabel(month)} (${channelLabel})`;
+  const periodTxt = periodLabel ? `${monthLabel(month)} · ${periodLabel}` : monthLabel(month);
+  const head = `SOA Totaaloverzicht - ${periodTxt} (${channelLabel})`;
 
   if (brands.length === 0) {
-    // Lege maand: toch een geldig bestand teruggeven.
-    const ws = buildBrandSheet(`SOA Totaaloverzicht - ${period}`, []);
-    XLSX.utils.book_append_sheet(wb, ws, sheetSafeName('SOA Totaal', usedSheetNames));
+    XLSX.utils.book_append_sheet(wb, buildBrandSheet(head, []), sheetSafeName('SOA Totaal', usedSheetNames));
   } else {
     for (const b of brands) {
-      const ws = buildBrandSheet(`SOA Totaaloverzicht - ${period} - ${b.brand}`, b.items);
-      XLSX.utils.book_append_sheet(wb, ws, sheetSafeName(b.brand, usedSheetNames));
+      XLSX.utils.book_append_sheet(wb, buildBrandSheet(`${head} - ${b.brand}`, b.items), sheetSafeName(b.brand, usedSheetNames));
     }
   }
 
-  XLSX.writeFile(wb, `SOA Totaaloverzicht ${period} (${formatExportDate()}).xlsx`);
+  const fileTag = channelLabel === 'Alle kanalen' ? '' : ' (kanaalselectie)';
+  XLSX.writeFile(wb, `SOA Totaaloverzicht ${monthLabel(month)}${fileTag} (${formatExportDate()}).xlsx`);
 }
 
 function autoWidth(ws: XLSX.WorkSheet, data: (string | number)[][]) {
