@@ -53,6 +53,9 @@ interface ShopifyStatus {
   scope?: string;
   installedAt?: string;
   lastSyncedTo?: string | null;
+  /** true = token leeft, false = ingetrokken/winkel dicht, null = niet vast te stellen. */
+  tokenValid?: boolean | null;
+  tokenError?: string;
 }
 
 export default function Shopify() {
@@ -63,8 +66,10 @@ export default function Shopify() {
   const [stats, setStats] = useState<{ orders: number; lineItems: number; sales: number; weeks: number } | null>(null);
   const [shopifyStatus, setShopifyStatus] = useState<ShopifyStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const refreshStatus = useCallback(async () => {
+    setChecking(true);
     try {
       const res = await fetch('/api/shopify-status', { headers: authHeaders() });
       if (res.ok) {
@@ -79,6 +84,8 @@ export default function Shopify() {
       }
     } catch (e) {
       setStatusError(`Status ophalen mislukt: ${e instanceof Error ? e.message : 'netwerkfout'}.`);
+    } finally {
+      setChecking(false);
     }
   }, []);
 
@@ -254,6 +261,8 @@ export default function Shopify() {
         <h2 className="text-lg font-semibold">Shopify koppeling</h2>
       </div>
 
+      <ConnectionCard status={shopifyStatus} statusError={statusError} checking={checking} onRetest={refreshStatus} />
+
       <div className="bg-info/10 border border-info/20 rounded-xl p-4 flex gap-3">
         <Info size={18} className="text-info shrink-0 mt-0.5" />
         <div className="text-sm text-dark/70 space-y-2">
@@ -371,6 +380,85 @@ export default function Shopify() {
           <li>Klik de install-link van Partners → goedkeuren → token wordt automatisch opgeslagen in Supabase tabel <code>shopify_tokens</code>.</li>
         </ol>
       </details>
+    </div>
+  );
+}
+
+/**
+ * Toont de échte staat van de koppeling: niet "er staat een token in de database",
+ * maar of Shopify dat token nog accepteert. De server pingt daarvoor de Admin API
+ * (zie shopify-status.mts). Zonder deze kaart meldde de pagina "verbonden" terwijl
+ * de app uit de winkel verwijderd was en elke sync zou falen.
+ */
+function ConnectionCard({
+  status,
+  statusError,
+  checking,
+  onRetest,
+}: {
+  status: ShopifyStatus | null;
+  statusError: string | null;
+  checking: boolean;
+  onRetest: () => void;
+}) {
+  let tone: 'ok' | 'bad' | 'unknown' = 'unknown';
+  let title = 'Verbinding controleren...';
+  let detail: string | null = null;
+
+  if (statusError) {
+    tone = 'bad';
+    title = 'Verbindingsstatus onbekend';
+    detail = statusError;
+  } else if (!status) {
+    tone = 'unknown';
+    title = checking ? 'Verbinding controleren...' : 'Verbindingsstatus onbekend';
+  } else if (status.tokenValid === true) {
+    tone = 'ok';
+    title = `Verbonden met ${status.shop}`;
+    detail = `Shopify accepteert het token. Geïnstalleerd op ${status.installedAt ? formatDateNL(status.installedAt) : 'onbekende datum'}. Scopes: ${status.scope || 'onbekend'}.`;
+  } else if (status.tokenValid === false) {
+    tone = 'bad';
+    title = status.connected ? `Koppeling met ${status.shop} is verlopen` : 'Geen Shopify-koppeling';
+    detail = status.tokenError || 'Shopify accepteert het opgeslagen token niet meer.';
+  } else {
+    tone = 'unknown';
+    title = 'Verbinding niet te controleren';
+    detail = status.tokenError || 'Shopify gaf geen duidelijk antwoord. Dit kan een tijdelijke storing zijn.';
+  }
+
+  const styles = {
+    ok: 'bg-success/10 border-success/30 text-success',
+    bad: 'bg-danger/10 border-danger/30 text-danger',
+    unknown: 'bg-warning/10 border-warning/30 text-warning',
+  }[tone];
+
+  return (
+    <div className={`border rounded-3xl p-5 space-y-2 ${styles}`}>
+      <div className="flex items-center gap-2">
+        {checking ? (
+          <RefreshCw size={18} className="animate-spin shrink-0" />
+        ) : tone === 'ok' ? (
+          <CheckCircle size={18} className="shrink-0" />
+        ) : (
+          <AlertTriangle size={18} className="shrink-0" />
+        )}
+        <h3 className="text-sm font-medium">{title}</h3>
+      </div>
+      {detail && <p className="text-xs text-dark/70">{detail}</p>}
+      {tone === 'bad' && !statusError && (
+        <p className="text-xs text-dark/70">
+          Herstellen kan alleen vanuit de winkel zelf: de winkeleigenaar opent de custom-distribution
+          install-link uit Shopify Partners en keurt de app goed. Het nieuwe token wordt daarna
+          automatisch opgeslagen. Zie de setup-instructies onderaan deze pagina.
+        </p>
+      )}
+      <button
+        onClick={onRetest}
+        disabled={checking}
+        className="text-xs underline disabled:opacity-50"
+      >
+        {checking ? 'Bezig met testen...' : 'Verbinding opnieuw testen'}
+      </button>
     </div>
   );
 }
