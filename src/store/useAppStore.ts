@@ -118,8 +118,14 @@ export const useAppStore = create<AppState & AppActions>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
       // Shopify-refurbished/open-box en losse onderdelen worden hier uitgefilterd
-      // zodat die rijen nergens meetellen (sell-out = nieuwe steps).
-      allData: () => [...EMBEDDED_DATA, ...get().userData].filter((r) => !isShopifyRefurbished(r) && !isSparePart(r)),
+      // zodat die rijen nergens meetellen (sell-out = nieuwe steps). Retouren
+      // (negatieve sales, o.a. in de FNAC/VDB-weekbestanden) tellen niet mee:
+      // we rapporteren alleen verkopen. De rij blijft wel staan zodat de
+      // voorraad (k) in de snapshot meetelt.
+      allData: () =>
+        [...EMBEDDED_DATA, ...get().userData]
+          .filter((r) => !isShopifyRefurbished(r) && !isSparePart(r))
+          .map((r) => (r.s < 0 ? { ...r, s: 0 } : r)),
 
       displayName: (orig: string) => get().aliases[orig] || catalogDisplayName(orig) || orig,
     }),
