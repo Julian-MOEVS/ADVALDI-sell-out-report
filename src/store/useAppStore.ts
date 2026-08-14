@@ -4,7 +4,7 @@ import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
 import { catalogDisplayName, setDynamicCatalog, setProductLinks, setCatalogAliases } from '../lib/catalog';
 import { fetchAllRows, insertRows, deleteCombo, deleteChannel, fetchCatalog, fetchProductLinks, createImport, deleteImport, fetchCatalogAliases } from '../lib/supabase';
-import { isShopifyRefurbished } from '../lib/filters';
+import { isShopifyRefurbished, isSparePart } from '../lib/filters';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -117,8 +117,9 @@ export const useAppStore = create<AppState & AppActions>()(
       setActivePage: (page, detailId = '') => set({ activePage: page, detailId }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-      // Shopify-refurbished wordt hier uitgefilterd zodat die rijen nergens meetellen.
-      allData: () => [...EMBEDDED_DATA, ...get().userData].filter((r) => !isShopifyRefurbished(r)),
+      // Shopify-refurbished/open-box en losse onderdelen worden hier uitgefilterd
+      // zodat die rijen nergens meetellen (sell-out = nieuwe steps).
+      allData: () => [...EMBEDDED_DATA, ...get().userData].filter((r) => !isShopifyRefurbished(r) && !isSparePart(r)),
 
       displayName: (orig: string) => get().aliases[orig] || catalogDisplayName(orig) || orig,
     }),

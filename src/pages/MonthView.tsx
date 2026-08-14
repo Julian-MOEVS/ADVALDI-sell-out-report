@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import {
-  months, monthLabel, monthLabelShort, weekToMonth, channelDisplay,
-  weeksInMonth, weeksDateRangeLabel,
+  months, monthLabel, monthLabelShort, channelDisplay,
+  weeks, weeksInMonth, weeksInRange, weeksDateRangeLabel, isoWeekMonday,
   sum, groupBy, stockForArticle, stockForData,
   resolveProductKey, resolvedDisplayName, resolveStoreKey, channels,
 } from '../lib/filters';
@@ -11,34 +11,71 @@ import StatCard from '../components/ui/StatCard';
 import ChannelPill from '../components/ui/ChannelPill';
 import { ShoppingCart, Package, TrendingUp, Store, Download, Calendar } from 'lucide-react';
 
+const toISO = (d: Date): string => d.toISOString().slice(0, 10);
+function weekStartISO(w: string): string {
+  const m = isoWeekMonday(w);
+  return m ? toISO(m) : '';
+}
+function weekEndISO(w: string): string {
+  const m = isoWeekMonday(w);
+  if (!m) return '';
+  const s = new Date(m);
+  s.setUTCDate(m.getUTCDate() + 6);
+  return toISO(s);
+}
+
 export default function MonthView() {
   const { allData, aliases } = useAppStore();
   const data = allData();
   const allMonths = months(data);
+  const allWeeks = useMemo(() => weeks(data), [data]);
 
-  const [activeMonth, setActiveMonth] = useState(allMonths[allMonths.length - 1] || '');
+  // Periode = een start/eind datumbereik. Data zit per volle week, dus het bereik
+  // wordt naar hele weken "gesnapt" (elke week die het bereik raakt telt mee).
+  const monthSpan = (m: string) => {
+    const mw = weeksInMonth(data, m);
+    return mw.length ? { start: weekStartISO(mw[0]), end: weekEndISO(mw[mw.length - 1]) } : null;
+  };
+
+  const [range, setRange] = useState<{ start: string; end: string }>(() => {
+    const last = allMonths[allMonths.length - 1];
+    const mw = last ? weeksInMonth(data, last) : [];
+    return mw.length ? { start: weekStartISO(mw[0]), end: weekEndISO(mw[mw.length - 1]) } : { start: '', end: '' };
+  });
   // Uitgesloten kanalen (leeg = alles aan). Zo kun je bijv. FNAC + Vanden Borre eruit rekenen.
   const [disabledChannels, setDisabledChannels] = useState<Set<string>>(new Set());
 
-  const monthRows = useMemo(() => data.filter((r) => weekToMonth(r.w) === activeMonth), [data, activeMonth]);
-  const monthChannels = useMemo(() => channels(monthRows), [monthRows]);
-  const monthWeeks = useMemo(() => weeksInMonth(data, activeMonth), [data, activeMonth]);
+  // Zet standaard op de laatste maand zodra data geladen is (init kan nog leeg zijn).
+  useEffect(() => {
+    if (!range.start && !range.end && allMonths.length > 0) {
+      const sp = monthSpan(allMonths[allMonths.length - 1]);
+      if (sp) setRange(sp);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMonths.length]);
+
+  const selectedWeeks = useMemo(() => weeksInRange(allWeeks, range.start, range.end), [allWeeks, range.start, range.end]);
+  const selectedSet = useMemo(() => new Set(selectedWeeks), [selectedWeeks]);
+
+  const periodRows = useMemo(() => data.filter((r) => selectedSet.has(r.w)), [data, selectedSet]);
+  const monthChannels = useMemo(() => channels(periodRows), [periodRows]);
   const rows = useMemo(
-    () => monthRows.filter((r) => !disabledChannels.has(channelDisplay(r.ch))),
-    [monthRows, disabledChannels]
+    () => periodRows.filter((r) => !disabledChannels.has(channelDisplay(r.ch))),
+    [periodRows, disabledChannels]
   );
 
-  const prevMonthIdx = allMonths.indexOf(activeMonth);
-  const prevMonth = prevMonthIdx > 0 ? allMonths[prevMonthIdx - 1] : null;
-  const prevRows = useMemo(
-    () => (prevMonth ? data.filter((r) => weekToMonth(r.w) === prevMonth && !disabledChannels.has(channelDisplay(r.ch))) : []),
-    [data, prevMonth, disabledChannels]
-  );
+  // Vorige periode = evenveel weken direct ervoor (voor de delta).
+  const firstIdx = selectedWeeks.length ? allWeeks.indexOf(selectedWeeks[0]) : -1;
+  const prevRows = useMemo(() => {
+    if (firstIdx <= 0) return [];
+    const prevSet = new Set(allWeeks.slice(Math.max(0, firstIdx - selectedWeeks.length), firstIdx));
+    return data.filter((r) => prevSet.has(r.w) && !disabledChannels.has(channelDisplay(r.ch)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, allWeeks, firstIdx, selectedWeeks.length, disabledChannels]);
 
   const totalSales = sum(rows, 's');
-  const prevSales = sum(prevRows, 's');
-  const deltaSales = prevMonth ? totalSales - prevSales : null;
-  // Voorraad = snapshot van de laatste week binnen de maand (niet optellen over weken).
+  const deltaSales = firstIdx > 0 ? totalSales - sum(prevRows, 's') : null;
+  // Voorraad = snapshot van de laatste week binnen de periode (niet optellen over weken).
   const totalStock = stockForData(rows, 'all');
   const totalPurchase = sum(rows, 'p');
   const activeStores = new Set(rows.map((r) => resolveStoreKey(r))).size;
@@ -118,39 +155,67 @@ export default function MonthView() {
       return next;
     });
 
+  const periodLabel = weeksDateRangeLabel(selectedWeeks);
+  const weeksLabel = selectedWeeks.length
+    ? `W${selectedWeeks[0].slice(-2)}${selectedWeeks.length > 1 ? `-W${selectedWeeks[selectedWeeks.length - 1].slice(-2)}` : ''}`
+    : '';
+
   if (allMonths.length === 0) {
     return <div className="text-center text-dark/40 py-12">Geen data beschikbaar. Importeer eerst Excel-bestanden.</div>;
   }
 
   return (
     <div className="space-y-6">
-      {/* Maand-tabs */}
-      <div className="flex flex-wrap gap-2">
-        {allMonths.map((m) => (
-          <button
-            key={m}
-            onClick={() => setActiveMonth(m)}
-            title={monthLabel(m)}
-            className={`px-3 py-1.5 rounded-lg text-sm transition ${
-              m === activeMonth ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/50 hover:text-dark'
-            }`}
-          >
-            {monthLabelShort(m)}
-          </button>
-        ))}
+      {/* Snelkeuze per maand: zet de periode op de volle weken van die maand */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <span className="text-xs uppercase tracking-wide text-dark/40 mr-1">Maand:</span>
+        {allMonths.map((m) => {
+          const sp = monthSpan(m);
+          const active = !!sp && sp.start === range.start && sp.end === range.end;
+          return (
+            <button
+              key={m}
+              onClick={() => sp && setRange(sp)}
+              title={monthLabel(m)}
+              className={`px-3 py-1.5 rounded-lg text-sm transition ${
+                active ? 'bg-gradient-to-r from-accent-light to-accent text-white' : 'bg-bg text-dark/50 hover:text-dark'
+              }`}
+            >
+              {monthLabelShort(m)}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Actieve periode-header: maand + exacte volle-weken en datumbereik */}
-      {activeMonth && (
+      {/* Eigen periode: start/eind datum. Wordt naar hele weken gesnapt. */}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-xs uppercase tracking-wide text-dark/40 mr-1">Periode:</span>
+        <input
+          type="date"
+          value={range.start}
+          max={range.end || undefined}
+          onChange={(e) => setRange((r) => ({ ...r, start: e.target.value }))}
+          className="bg-bg border border-bg4 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent"
+        />
+        <span className="text-dark/40">t/m</span>
+        <input
+          type="date"
+          value={range.end}
+          min={range.start || undefined}
+          onChange={(e) => setRange((r) => ({ ...r, end: e.target.value }))}
+          className="bg-bg border border-bg4 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent"
+        />
+      </div>
+
+      {/* Gedekte periode: exacte volle weken + datumbereik */}
+      {selectedWeeks.length > 0 ? (
         <div className="flex items-center gap-2 text-sm text-dark/60 flex-wrap">
           <Calendar size={14} className="text-accent" />
-          <span><strong className="text-dark">{monthLabel(activeMonth)}</strong></span>
-          {monthWeeks.length > 0 && (
-            <span className="text-dark/40">
-              · W{monthWeeks[0].slice(-2)}{monthWeeks.length > 1 ? `-W${monthWeeks[monthWeeks.length - 1].slice(-2)}` : ''} · {weeksDateRangeLabel(monthWeeks)}
-            </span>
-          )}
+          <span><strong className="text-dark">{periodLabel}</strong></span>
+          <span className="text-dark/40">· {weeksLabel} · {selectedWeeks.length} {selectedWeeks.length === 1 ? 'week' : 'weken'}</span>
         </div>
+      ) : (
+        <div className="text-sm text-warning">Geen volle weken in dit bereik. Kies een ruimer bereik of een maand.</div>
       )}
 
       {/* Kanalen: multi-select. Klik een kanaal aan/uit; uitgezette kanalen tellen nergens mee. */}
@@ -187,11 +252,11 @@ export default function MonthView() {
           icon={<ShoppingCart size={16} />}
           sub={deltaSales !== null && (
             <span className={deltaSales >= 0 ? 'text-success' : 'text-danger'}>
-              {deltaSales >= 0 ? '▲' : '▼'} {Math.abs(deltaSales)} vs vorige maand
+              {deltaSales >= 0 ? '▲' : '▼'} {Math.abs(deltaSales)} vs vorige periode
             </span>
           )}
         />
-        <StatCard label="Voorraad einde maand" value={totalStock.toLocaleString('nl-NL')} icon={<Package size={16} />} />
+        <StatCard label="Voorraad einde periode" value={totalStock.toLocaleString('nl-NL')} icon={<Package size={16} />} />
         <StatCard label="Inkopen" value={totalPurchase.toLocaleString('nl-NL')} icon={<TrendingUp size={16} />} />
         <StatCard label="Actieve winkels" value={activeStores} icon={<Store size={16} />} />
       </div>
@@ -268,9 +333,9 @@ export default function MonthView() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-dark/60">Merk-breakdown</h3>
           <button
-            onClick={() => exportMonthTotalExcel(activeMonth, weeksDateRangeLabel(monthWeeks), channelLabel, rows, aliases)}
+            onClick={() => exportMonthTotalExcel(periodLabel, channelLabel, rows, aliases)}
             className="flex items-center gap-1 text-xs text-accent hover:text-accent/80"
-            title="Exporteert één Excel-tabblad met per product het totaal verkochte aantal (winkels/verkopers opgeteld) voor de gekozen maand"
+            title="Exporteert per merk een tabblad met per product een kolom per verkoop-tak (Media Markt NL/BE/LU, Online, FNAC, Shopify, Vanden Borre) + totaal, voor de gekozen periode en kanalen"
           >
             <Download size={14} /> Export SOA totaaloverzicht
           </button>

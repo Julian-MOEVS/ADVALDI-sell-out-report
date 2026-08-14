@@ -157,6 +157,24 @@ export function weeksInMonth(data: DataRow[], month: string): string[] {
   return [...new Set(data.filter((r) => weekToMonth(r.w) === month).map((r) => r.w).filter(isValidWeek))].sort();
 }
 
+/** Weken (uit de gegeven set) die het datumbereik [startISO, endISO] raken; lege grens = onbegrensd. */
+export function weeksInRange(weeks: string[], startISO: string, endISO: string): string[] {
+  const start = startISO ? new Date(`${startISO}T00:00:00Z`) : null;
+  const end = endISO ? new Date(`${endISO}T23:59:59Z`) : null;
+  return weeks
+    .filter(isValidWeek)
+    .filter((w) => {
+      const mon = isoWeekMonday(w);
+      if (!mon) return false;
+      const sun = new Date(mon);
+      sun.setUTCDate(mon.getUTCDate() + 6);
+      if (start && sun < start) return false;
+      if (end && mon > end) return false;
+      return true;
+    })
+    .sort();
+}
+
 /** Datumbereik-label voor een set weken (ma van eerste week t/m zo van laatste), bijv. "1 - 28 jun 2026". */
 export function weeksDateRangeLabel(weeks: string[]): string {
   const valid = weeks.filter(isValidWeek).sort();
@@ -234,12 +252,27 @@ export function resolveStoreKey(r: DataRow): string {
 }
 
 /**
- * Refurbished-verkopen via Shopify tellen NIET mee in de sell-out. Herkent
- * 'Refurbished' / 'refurbished' in de productnaam, uitsluitend voor het
+ * Niet-nieuwe verkopen via Shopify tellen NIET mee in de sell-out. Herkent
+ * 'Refurbished', 'Opened packaging' / 'Open box' in de productnaam en het
+ * '-DAM'-suffix in de SKU (damaged/geopende verpakking), uitsluitend voor het
  * Shopify-kanaal (Media Markt e.d. refurbished blijft gewoon meetellen).
+ * Zonder de open-box check telden bijv. 13x "Pure Air⁵ Opened packaging"
+ * (SCPURZ040-00001-DAM) via de EAN-match mee als nieuwe "PURE Air5 Black",
+ * terwijl Pure die zelf niet als sell-out rapporteert.
  * Wordt toegepast in allData(), zodat deze rijen nergens meegeteld worden.
  */
 export function isShopifyRefurbished(r: DataRow): boolean {
   const ch = (r.ch || '').toLowerCase();
-  return ch.startsWith('shopify') && /refurbished/i.test(r.an || '');
+  if (!ch.startsWith('shopify')) return false;
+  return /refurbished|opened packaging|open box/i.test(r.an || '') || /-DAM\b/i.test(r.sku || '');
+}
+
+/**
+ * Losse onderdelen/accessoires (Pure spare-part SKU's beginnen met "PSPUR")
+ * tellen niet mee als sell-out: Pure's eigen rapportage telt alleen steps.
+ * Zonder dit filter kwamen na een Shopify-sync o.a. laders, banden en
+ * reflectoren als "producten" in de SOA-telling terecht.
+ */
+export function isSparePart(r: DataRow): boolean {
+  return /^PSPUR/i.test(r.sku || '');
 }

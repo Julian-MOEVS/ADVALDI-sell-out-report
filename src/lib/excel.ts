@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
 import type { CatalogEntry } from './supabase';
-import { stockForArticle, resolveProductKey, resolvedDisplayName, monthLabel, branchOf } from './filters';
+import { stockForArticle, resolveProductKey, resolvedDisplayName, branchOf } from './filters';
 import { matchToCatalog, getCatalogBySku, getDynamicCatalog } from './catalog';
 
 interface ColMap {
@@ -501,7 +501,6 @@ export function exportBrandExcel(
  * weken (bijv. "1 - 28 jun 2026"); `month` is een maandsleutel "YYYY-MM".
  */
 export function exportMonthTotalExcel(
-  month: string,
   periodLabel: string,
   channelLabel: string,
   rows: DataRow[],
@@ -579,8 +578,7 @@ export function exportMonthTotalExcel(
 
   const wb = XLSX.utils.book_new();
   const usedSheetNames = new Set<string>();
-  const periodTxt = periodLabel ? `${monthLabel(month)} · ${periodLabel}` : monthLabel(month);
-  const head = `SOA Totaaloverzicht - ${periodTxt} (${channelLabel})`;
+  const head = `SOA Totaaloverzicht - ${periodLabel} (${channelLabel})`;
 
   if (brands.length === 0) {
     XLSX.utils.book_append_sheet(wb, buildBrandSheet(head, []), sheetSafeName('SOA Totaal', usedSheetNames));
@@ -591,7 +589,7 @@ export function exportMonthTotalExcel(
   }
 
   const fileTag = channelLabel === 'Alle kanalen' ? '' : ' (kanaalselectie)';
-  XLSX.writeFile(wb, `SOA Totaaloverzicht ${monthLabel(month)}${fileTag} (${formatExportDate()}).xlsx`);
+  XLSX.writeFile(wb, `SOA Totaaloverzicht ${periodLabel}${fileTag} (${formatExportDate()}).xlsx`);
 }
 
 function autoWidth(ws: XLSX.WorkSheet, data: (string | number)[][]) {
