@@ -30,8 +30,22 @@ interface MatchResult {
   rowCount: number;
 }
 
+/**
+ * Groepeer rijen op (week|kanaal|artikel|winkel) met opgeteld aantal, zodat een
+ * her-import of overlappende export herkend wordt voordat er dubbel geteld wordt.
+ */
+function overlapGroups(rows: DataRow[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.w) continue;
+    const k = `${r.w}|${r.ch}|${r.an}|${r.st}`;
+    m.set(k, (m.get(k) || 0) + r.s);
+  }
+  return m;
+}
+
 export default function Import() {
-  const { importFiles, setActivePage } = useAppStore();
+  const { importFiles, setActivePage, allData } = useAppStore();
   const [importType, setImportType] = useState<ImportType>('mediamarkt');
   const [market, setMarket] = useState<'NL' | 'BE'>('NL');
   const [parsed, setParsed] = useState<DataRow[]>([]);
@@ -128,6 +142,30 @@ export default function Import() {
   );
 
   const handleConfirm = async () => {
+    if (saving) return;
+
+    // Dubbel-import-detectie: vergelijk de nieuwe rijen met wat er al staat.
+    // Zonder deze check telt dezelfde export (of een export met overlappende
+    // periode, zoals twee Brincr-bestanden die allebei orders van dezelfde dag
+    // bevatten) stilletjes dubbel; dat gebeurde in aug 2026 met de NAVEE-weken.
+    const existing = overlapGroups(allData());
+    const incoming = overlapGroups(parsed);
+    const overlapping = [...incoming.keys()].filter((k) => existing.has(k));
+    if (overlapping.length > 0) {
+      const allCovered = overlapping.length === incoming.size;
+      const sample = overlapping.slice(0, 8).map((k) => {
+        const [w, , an, st] = k.split('|');
+        return `- week ${w.slice(4)}: ${an}${st ? ` (${st})` : ''}`;
+      }).join('\n');
+      const msg = allCovered
+        ? `Dit bestand lijkt al geïmporteerd te zijn: alle ${incoming.size} productregels bestaan al in de database (zelfde week, kanaal, artikel en winkel/klant).\n\n${sample}\n\nToch importeren? Dan telt alles DUBBEL. Kies bij twijfel Annuleren.`
+        : `Let op: ${overlapping.length} van de ${incoming.size} productregels in dit bestand bestaan al in de database:\n\n${sample}\n\nWaarschijnlijk overlapt de exportperiode met een eerdere import; die regels gaan dan dubbel tellen. Alleen doorgaan als je zeker weet dat het om andere orders gaat (bijv. twee losse orders van hetzelfde product in dezelfde week). Kies bij twijfel Annuleren en exporteer een periode die aansluit op de vorige import.`;
+      if (!window.confirm(msg)) {
+        setStatus('Import geannuleerd: mogelijke dubbele data.');
+        return;
+      }
+    }
+
     setSaving(true);
 
     // Save manual links + SKU/EAN aliases to Supabase
