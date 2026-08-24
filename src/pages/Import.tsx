@@ -31,14 +31,18 @@ interface MatchResult {
 }
 
 /**
- * Groepeer rijen op (week|kanaal|artikel|winkel) met opgeteld aantal, zodat een
- * her-import of overlappende export herkend wordt voordat er dubbel geteld wordt.
+ * Groepeer rijen op (week|kanaal|artikel|verkoop-tak/winkel) met opgeteld aantal,
+ * zodat een her-import of overlappende export herkend wordt voordat er dubbel
+ * geteld wordt. Gebruik `sl` (bijv. "37 Media Markt Luxembourg / ...") en niet
+ * alleen `st`: bij de Media Markt-bestanden is de winkelkolom leeg, waardoor
+ * BE-, NL- en LU-regels met hetzelfde artikel anders als duplicaat golden en een
+ * nieuw landbestand niet meer geimporteerd kon worden.
  */
 function overlapGroups(rows: DataRow[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const r of rows) {
     if (!r.w) continue;
-    const k = `${r.w}|${r.ch}|${r.an}|${r.st}`;
+    const k = `${r.w}|${r.ch}|${r.an}|${r.sl || r.st}`;
     m.set(k, (m.get(k) || 0) + r.s);
   }
   return m;
@@ -154,8 +158,8 @@ export default function Import() {
     if (overlapping.length > 0) {
       const allCovered = overlapping.length === incoming.size;
       const sample = overlapping.slice(0, 8).map((k) => {
-        const [w, , an, st] = k.split('|');
-        return `- week ${w.slice(4)}: ${an}${st ? ` (${st})` : ''}`;
+        const [w, , an, where] = k.split('|');
+        return `- week ${w.slice(4)}: ${an}${where ? ` (${where})` : ''}`;
       }).join('\n');
       const msg = allCovered
         ? `Dit bestand lijkt al geïmporteerd te zijn: alle ${incoming.size} productregels bestaan al in de database (zelfde week, kanaal, artikel en winkel/klant).\n\n${sample}\n\nToch importeren? Dan telt alles DUBBEL. Kies bij twijfel Annuleren.`
