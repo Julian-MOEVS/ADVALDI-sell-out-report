@@ -4,7 +4,7 @@ import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
 import { catalogDisplayName, setDynamicCatalog, setProductLinks, setCatalogAliases } from '../lib/catalog';
 import { fetchAllRows, insertRows, deleteCombo, deleteChannel, fetchCatalog, fetchProductLinks, createImport, deleteImport, fetchCatalogAliases } from '../lib/supabase';
-import { isShopifyRefurbished, isSparePart } from '../lib/filters';
+import { isShopifyRefurbished, isSparePart, isChargeFee } from '../lib/filters';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -117,14 +117,15 @@ export const useAppStore = create<AppState & AppActions>()(
       setActivePage: (page, detailId = '') => set({ activePage: page, detailId }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-      // Shopify-refurbished/open-box en losse onderdelen worden hier uitgefilterd
-      // zodat die rijen nergens meetellen (sell-out = nieuwe steps). Retouren
-      // (negatieve sales, o.a. in de FNAC/VDB-weekbestanden) tellen niet mee:
-      // we rapporteren alleen verkopen. De rij blijft wel staan zodat de
-      // voorraad (k) in de snapshot meetelt.
+      // Shopify-refurbished/open-box, losse onderdelen en ChargeFee-kostenregels
+      // (RDW-registratie, kentekenplaat) worden hier uitgefilterd zodat die rijen
+      // nergens meetellen (sell-out = nieuwe steps). Retouren (negatieve sales,
+      // o.a. in de FNAC/VDB-weekbestanden) tellen niet mee: we rapporteren alleen
+      // verkopen. De rij blijft wel staan zodat de voorraad (k) in de snapshot
+      // meetelt.
       allData: () =>
         [...EMBEDDED_DATA, ...get().userData]
-          .filter((r) => !isShopifyRefurbished(r) && !isSparePart(r))
+          .filter((r) => !isShopifyRefurbished(r) && !isSparePart(r) && !isChargeFee(r))
           .map((r) => (r.s < 0 ? { ...r, s: 0 } : r)),
 
       displayName: (orig: string) => get().aliases[orig] || catalogDisplayName(orig) || orig,

@@ -276,3 +276,15 @@ export function isShopifyRefurbished(r: DataRow): boolean {
 export function isSparePart(r: DataRow): boolean {
   return /^PSPUR/i.test(r.sku || '');
 }
+
+/**
+ * Kosten-regels uit Shopify tellen niet mee als sell-out. Deze komen van de
+ * ChargeFee-app en staan in Shopify met leverancier (vendor) "ChargeFee";
+ * de sync bewaart die vendor als merk. Het gaat om RDW-registratiekosten,
+ * kentekenplaat + administratiekosten en vergelijkbare toeslagen: geen
+ * producten, dus ze horen niet in de telling en ook niet als eigen merk-tab
+ * in de SOA-export.
+ */
+export function isChargeFee(r: DataRow): boolean {
+  return (r.mfr || '').replace(/\s+/g, '').toLowerCase() === 'chargefee';
+}
