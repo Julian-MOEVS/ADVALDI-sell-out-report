@@ -130,10 +130,16 @@ export function channelDisplay(ch: string): string {
  * oud ("18 Media Markt Belgium") en nieuw ("Media Markt Belgium") samenvallen.
  * Oude NL-data zonder tak-prefix wordt afgeleid uit online-heuristiek + land.
  * Voor overige kanalen is het kanaal zelf de tak (FNAC, Shopify - D2C, Vanden
- * Borre, Brincr).
+ * Borre). Brincr is de uitzondering: dat zijn de zelfstandige dealers, die in
+ * de rapportage naar Pure onder één noemer "Independent" vallen en niet per
+ * dealer benoemd worden. Het detail per dealer blijft zichtbaar via
+ * resolveStoreKey (Winkels / Top winkels).
  */
+export const INDEPENDENT_LABEL = 'Independent';
+
 export function branchOf(r: DataRow): string {
   const ch = channelDisplay(r.ch);
+  if (ch.toLowerCase() === 'brincr') return INDEPENDENT_LABEL;
   if (!ch.startsWith('MM-')) return ch || r.ch || '—';
   const sl = (r.sl || '').trim();
   const slash = sl.indexOf(' / ');

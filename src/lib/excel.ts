@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import type { DataRow } from '../types';
 import type { CatalogEntry } from './supabase';
-import { stockForArticle, resolveProductKey, resolvedDisplayName, branchOf } from './filters';
+import { stockForArticle, resolveProductKey, resolvedDisplayName, branchOf, INDEPENDENT_LABEL } from './filters';
 import { matchToCatalog, getCatalogBySku, getDynamicCatalog } from './catalog';
 
 interface ColMap {
@@ -295,7 +295,9 @@ function retailerAndChannel(r: DataRow): {
   if (ch === 'Vanden Borre') return { retailer: 'Vanden Borre', channel: 'Big Box', country: 'Belgium', kind: 'total' };
   if (ch === 'FNAC') return { retailer: 'FNAC', channel: 'Big Box', country: 'Belgium', kind: 'total' };
   if (ch === 'Shopify' || ch === 'Shopify - D2C') return { retailer: 'Shopify - D2C', channel: 'D2C - Pure', country, kind: 'online' };
-  if (ch === 'Brincr') return { retailer: r.st || 'Independent', channel: 'Independent ', country, kind: 'instore' };
+  // Alle zelfstandige dealers (Brincr) samen op één regel; Pure rapporteert dit
+  // kanaal als geheel, niet per dealer.
+  if (ch === 'Brincr') return { retailer: INDEPENDENT_LABEL, channel: 'Independent ', country, kind: 'instore' };
   return { retailer: ch || r.st || '—', channel: 'Online', country, kind: 'total' };
 }
 
@@ -365,7 +367,8 @@ function buildSellOutSheet(
     if (r === 'MediaMarkt Luxembourg') return 3;
     if (r === 'MediaMarkt Belgium') return 4;
     if (r === 'Shopify - D2C' || r === 'Shopify') return 5;
-    return 6;
+    if (r === INDEPENDENT_LABEL) return 6;
+    return 7;
   };
 
   const sortedKeys = Object.keys(groups).sort((a, b) => {
