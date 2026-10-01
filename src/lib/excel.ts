@@ -544,7 +544,7 @@ export function exportMonthTotalExcel(
           return { name: resolvedDisplayName(pk, aliases), perCh, sold: grp.reduce((a, r) => a + r.s, 0), stock: stockForArticle(grp) };
         })
         .filter((p) => p.sold !== 0 || p.stock > 0)
-        .sort((a, b) => b.sold - a.sold || b.stock - a.stock || a.name.localeCompare(b.name));
+        .sort((a, b) => byModel(a.name, b.name, brand));
       return { brand, items, totalSold: items.reduce((a, p) => a + p.sold, 0) };
     })
     .filter((b) => b.items.length > 0)
@@ -559,18 +559,35 @@ export function exportMonthTotalExcel(
       HEADER.map(() => ''),
       HEADER,
     ];
-    const totPerCh: Record<string, number> = {};
-    let totSold = 0, totStock = 0;
     for (const p of items) {
-      for (const c of channelCols) totPerCh[c] = (totPerCh[c] || 0) + (p.perCh[c] || 0);
-      totSold += p.sold;
-      totStock += p.stock;
       data.push([p.name, ...channelCols.map((c) => cell(p.perCh[c] || 0)), cell(p.sold), p.stock || '']);
     }
     data.push(HEADER.map(() => ''));
-    data.push(['TOTAAL', ...channelCols.map((c) => cell(totPerCh[c] || 0)), cell(totSold), totStock || '']);
+    data.push(['TOTAAL', ...HEADER.slice(1).map(() => '')]);
 
     const ws = XLSX.utils.aoa_to_sheet(data);
+
+    // Totaal-kolom en TOTAAL-regel als SUM-formules (met berekende waarde voor
+    // viewers zonder herberekening); nullen worden verborgen zoals de lege cellen.
+    const firstRow = 4; // excel-rij van het eerste product
+    const lastRow = firstRow + items.length - 1;
+    const totalRow = lastRow + 2;
+    const L = (c: number) => XLSX.utils.encode_col(c);
+    const totCol = channelCols.length + 1;
+    const hideZero = '0;-0;;@';
+    items.forEach((p, i) => {
+      const r = firstRow + i;
+      ws[`${L(totCol)}${r}`] = { t: 'n', v: p.sold, f: `SUM(B${r}:${L(totCol - 1)}${r})`, z: hideZero };
+    });
+    for (let c = 1; c < HEADER.length; c++) {
+      let v = 0;
+      if (c <= channelCols.length) v = items.reduce((a, p) => a + (p.perCh[channelCols[c - 1]] || 0), 0);
+      else if (c === totCol) v = items.reduce((a, p) => a + p.sold, 0);
+      else v = items.reduce((a, p) => a + p.stock, 0);
+      ws[`${L(c)}${totalRow}`] = items.length
+        ? { t: 'n', v, f: `SUM(${L(c)}${firstRow}:${L(c)}${lastRow})`, z: hideZero }
+        : { t: 'n', v: 0, z: hideZero };
+    }
     for (let c = 0; c < HEADER.length; c++) {
       const hc = ws[XLSX.utils.encode_cell({ r: 2, c })];
       if (hc) hc.s = { ...(hc.s || {}), font: { bold: true }, alignment: { wrapText: true } };
@@ -593,6 +610,20 @@ export function exportMonthTotalExcel(
 
   const fileTag = channelLabel === 'Alle kanalen' ? '' : ' (kanaalselectie)';
   XLSX.writeFile(wb, `SOA Totaaloverzicht ${periodLabel}${fileTag} (${formatExportDate()}).xlsx`);
+}
+
+/**
+ * Sorteert productnamen op model: merknaam vooraan telt niet mee ("PURE Air5" en
+ * "Air6 Pro+" staan dus naast elkaar), hoofdletterongevoelig en met natuurlijke
+ * getallen (Air5 voor Air6, K100 voor K1000).
+ */
+function byModel(a: string, b: string, brand: string): number {
+  const first = brand.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+  const model = (n: string) => {
+    const s = n.trim();
+    return first && s.toLowerCase().startsWith(`${first} `) ? s.slice(first.length + 1) : s;
+  };
+  return model(a).localeCompare(model(b), 'nl', { sensitivity: 'base', numeric: true }) || a.localeCompare(b);
 }
 
 function autoWidth(ws: XLSX.WorkSheet, data: (string | number)[][]) {
