@@ -13,8 +13,14 @@ export default function Databeheer() {
   const [search, setSearch] = useState('');
   const [imports, setImports] = useState<ImportBatch[]>([]);
 
+  // Alle Shopify-kanalen: oud 'Shopify', Pure 'Shopify - D2C' en per winkel
+  // een eigen kanaal (bijv. 'Shopify - NAVEE', zie shopifyShops.ts).
+  const shopifyChannels = useMemo(
+    () => [...new Set(data.filter((r) => /^shopify/i.test(r.ch || '')).map((r) => r.ch))],
+    [data]
+  );
   const shopifyRowCount = useMemo(
-    () => data.filter((r) => r.ch === 'Shopify' || r.ch === 'Shopify - D2C').length,
+    () => data.filter((r) => /^shopify/i.test(r.ch || '')).length,
     [data]
   );
 
@@ -153,8 +159,7 @@ export default function Databeheer() {
             <button
               onClick={async () => {
                 if (confirm(`Weet je zeker dat je alle ${shopifyRowCount} Shopify-rijen wilt verwijderen?`)) {
-                  await removeChannel('Shopify');
-                  await removeChannel('Shopify - D2C');
+                  for (const ch of shopifyChannels) await removeChannel(ch);
                 }
               }}
               className="flex items-center gap-2 px-3 py-2 bg-danger/10 text-danger rounded-lg hover:bg-danger/20 transition text-sm"

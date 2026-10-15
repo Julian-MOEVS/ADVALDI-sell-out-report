@@ -1,25 +1,43 @@
 import type { Context } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'node:crypto';
+import { shopifyApps, serviceClient, isShopDomain, type ShopifyApp } from '../shared/shopify.mts';
+
+/** HMAC-SHA256 (hex) van de callback-query, zoals Shopify die met de client secret ondertekent. */
+async function signQuery(params: URLSearchParams, secret: string): Promise<string> {
+  const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const message = sorted.map(([k, v]) => `${k}=${v}`).join('&');
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * OAuth callback voor Shopify Partner App custom distribution install.
  * Shopify redirect na install naar deze URL met query params { code, shop, hmac, state, timestamp }.
  * Wij wisselen de code in voor een offline access token en slaan die op in Supabase.
+ *
+ * Er kunnen meerdere apps zijn (Pure en NAVEE zitten in verschillende winkels,
+ * elk met een eigen app). De app die de callback ondertekende is de app waarvan
+ * het geheim een geldige HMAC oplevert; met die app wisselen we de code in.
  */
 export default async (req: Request, _ctx: Context) => {
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
-  const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const apps = shopifyApps();
+  const supabase = serviceClient();
 
-  if (!clientId || !clientSecret) {
+  if (apps.length === 0) {
     return new Response(
       'Server is niet correct geconfigureerd: SHOPIFY_CLIENT_ID en SHOPIFY_CLIENT_SECRET ontbreken.',
       { status: 500 }
     );
   }
-  if (!supabaseServiceKey) {
+  if (!supabase) {
     return new Response(
       'Server is niet correct geconfigureerd: SUPABASE_SERVICE_ROLE_KEY ontbreekt.',
       { status: 500 }
@@ -37,7 +55,7 @@ export default async (req: Request, _ctx: Context) => {
   }
 
   // Shop URL validatie: alleen *.myshopify.com toestaan
-  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shop)) {
+  if (!isShopDomain(shop)) {
     return new Response('Ongeldige shop URL.', { status: 400 });
   }
 
@@ -56,35 +74,29 @@ export default async (req: Request, _ctx: Context) => {
     return new Response('Verlopen of ontbrekende timestamp.', { status: 401 });
   }
 
-  {
-    const params = new URLSearchParams(url.search);
-    params.delete('hmac');
-    params.delete('signature');
-    const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
-    const message = sorted.map(([k, v]) => `${k}=${v}`).join('&');
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(clientSecret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-    const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
-    const sigHex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const params = new URLSearchParams(url.search);
+  params.delete('hmac');
+  params.delete('signature');
+  let app: ShopifyApp | null = null;
+  for (const candidate of apps) {
+    const sigHex = await signQuery(params, candidate.clientSecret);
     // Constant-time vergelijking (voorkomt timing-side-channel op de hmac).
     const a = Buffer.from(sigHex);
     const b = Buffer.from(hmac);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      return new Response('HMAC verificatie mislukt.', { status: 401 });
+    if (a.length === b.length && timingSafeEqual(a, b)) {
+      app = candidate;
+      break;
     }
+  }
+  if (!app) {
+    return new Response('HMAC verificatie mislukt.', { status: 401 });
   }
 
   // Wissel code in voor access token
   const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+    body: JSON.stringify({ client_id: app.clientId, client_secret: app.clientSecret, code }),
   });
 
   if (!tokenRes.ok) {
@@ -95,7 +107,6 @@ export default async (req: Request, _ctx: Context) => {
   const tokenData = (await tokenRes.json()) as { access_token: string; scope: string };
 
   // Sla op in Supabase (upsert per shop)
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
   const { error: dbError } = await supabase
     .from('shopify_tokens')
     .upsert(

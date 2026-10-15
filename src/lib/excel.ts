@@ -277,7 +277,7 @@ function toExcelSerial(d: Date): number {
   return Math.floor((d.getTime() - epoch) / 86400000);
 }
 
-type RefChannel = 'Big Box' | 'Independent ' | 'Online' | 'B2B' | 'D2C - Pure';
+type RefChannel = 'Big Box' | 'Independent ' | 'Online' | 'B2B' | 'D2C - Pure' | 'D2C - NAVEE';
 type SellOutKind = 'total' | 'online' | 'instore';
 
 /** Derive retailer name, channel, country and sell-out split for the Pure template. */
@@ -294,6 +294,9 @@ function retailerAndChannel(r: DataRow): {
   if (ch === 'MM-BE') return { retailer: 'MediaMarkt Belgium', channel: 'Big Box', country: 'Belgium', kind: 'total' };
   if (ch === 'Vanden Borre') return { retailer: 'Vanden Borre', channel: 'Big Box', country: 'Belgium', kind: 'total' };
   if (ch === 'FNAC') return { retailer: 'FNAC', channel: 'Big Box', country: 'Belgium', kind: 'total' };
+  // Elke Shopify-winkel heeft een eigen kanaal (zie shopifyShops.ts); als
+  // retailer heten ze allemaal 'Shopify - D2C', de Channel-kolom zegt welke winkel.
+  if (ch === 'Shopify - NAVEE') return { retailer: 'Shopify - D2C', channel: 'D2C - NAVEE', country, kind: 'online' };
   if (ch === 'Shopify' || ch === 'Shopify - D2C') return { retailer: 'Shopify - D2C', channel: 'D2C - Pure', country, kind: 'online' };
   // Alle zelfstandige dealers (Brincr) samen op één regel; Pure rapporteert dit
   // kanaal als geheel, niet per dealer.

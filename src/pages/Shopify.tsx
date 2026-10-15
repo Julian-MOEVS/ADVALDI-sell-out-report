@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { deleteChannelWeeks, insertRows, fetchAllRows } from '../lib/supabase';
 import { authHeaders } from '../lib/api';
+import { SHOPIFY_SHOPS, vendorToBrand, type ShopifyShop } from '../lib/shopifyShops';
 import type { DataRow } from '../types';
 import { ShoppingBag, Info, RefreshCw, CheckCircle, AlertTriangle, Zap } from 'lucide-react';
 
@@ -14,14 +15,6 @@ interface ShopifyLineItem {
   vendor: string;
   barcode: string;
   quantity: number;
-}
-
-function normalizeVendor(raw: string): string {
-  const v = (raw || '').trim();
-  if (!v) return 'Pure Electric';
-  // Alle Pure-varianten samenvoegen (Pure, Pure Electric, Pure Electric Benelux, etc.)
-  if (v.toLowerCase().includes('pure')) return 'Pure Electric';
-  return v;
 }
 
 function dateToISOWeek(d: Date): string | null {
@@ -59,12 +52,14 @@ interface ShopifyStatus {
 }
 
 export default function Shopify() {
+  const [shopDomain, setShopDomain] = useState(SHOPIFY_SHOPS[0].domain);
+  const shop: ShopifyShop = SHOPIFY_SHOPS.find((s) => s.domain === shopDomain) ?? SHOPIFY_SHOPS[0];
   const [from, setFrom] = useState('2026-01-01');
   const [to, setTo] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [stats, setStats] = useState<{ orders: number; lineItems: number; sales: number; weeks: number } | null>(null);
-  const [shopifyStatus, setShopifyStatus] = useState<ShopifyStatus | null>(null);
+  const [allStatuses, setAllStatuses] = useState<ShopifyStatus[] | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
@@ -73,8 +68,8 @@ export default function Shopify() {
     try {
       const res = await fetch('/api/shopify-status', { headers: authHeaders() });
       if (res.ok) {
-        const data = (await res.json()) as ShopifyStatus;
-        setShopifyStatus(data);
+        const data = (await res.json()) as { shops?: ShopifyStatus[] };
+        setAllStatuses(data.shops ?? []);
         setStatusError(null);
       } else {
         // Vorige versie slikte dit stil in en toonde "geen eerdere sync",
@@ -93,6 +88,25 @@ export default function Shopify() {
     refreshStatus();
   }, [refreshStatus]);
 
+  // Status van de gekozen winkel. Staat hij niet in de lijst, dan is er nooit
+  // een token voor opgeslagen: de app is in die winkel nog niet geïnstalleerd.
+  const shopifyStatus: ShopifyStatus | null = allStatuses === null
+    ? null
+    : allStatuses.find((s) => s.shop === shop.domain) ?? {
+        connected: false,
+        shop: shop.domain,
+        tokenValid: false,
+        tokenError: `${shop.label} is nog niet gekoppeld: er staat geen token voor ${shop.domain} in de database. Installeer de Sell-out-report app in deze winkel (zie de setup-instructies onderaan).`,
+      };
+
+  const selectShop = (domain: string) => {
+    if (status === 'loading') return;
+    setShopDomain(domain);
+    setStatus('idle');
+    setMessage('');
+    setStats(null);
+  };
+
   /**
    * Run een sync voor een specifieke datumrange. Heeft replace-mode (delete bestaande weken eerst).
    * Bij succes wordt last_synced_to bijgewerkt op de server.
@@ -103,7 +117,7 @@ export default function Shopify() {
     setStats(null);
 
     try {
-      const params = new URLSearchParams({ from: fromDate });
+      const params = new URLSearchParams({ shop: shop.domain, from: fromDate });
       if (toDate) params.set('to', toDate);
 
       const res = await fetch(`/api/shopify-orders?${params.toString()}`, { headers: authHeaders() });
@@ -153,14 +167,14 @@ export default function Shopify() {
         rows.push({
           w: week,
           rg: 'NL',
-          mfr: normalizeVendor(item.vendor),
+          mfr: vendorToBrand(item.vendor, shop),
           pg: '',
           an: name,
           ean: item.barcode || '',
           sku: item.sku || '',
-          ch: 'Shopify - D2C',
-          st: 'Shopify - D2C',
-          sl: 'Shopify - D2C',
+          ch: shop.channel,
+          st: shop.channel,
+          sl: shop.channel,
           p: 0,
           s: qty,
           k: 0,
@@ -177,9 +191,10 @@ export default function Shopify() {
       const uniqueOrders = new Set(items.map((i) => i.order_id)).size;
       const totalSales = rows.reduce((a, r) => a + r.s, 0);
 
-      // Replace-mode: verwijder eerst bestaande Shopify - D2C rijen voor deze weken.
+      // Replace-mode: verwijder eerst bestaande rijen van het kanaal van DEZE winkel
+      // voor deze weken (andere winkels hebben een eigen kanaal en blijven staan).
       // ABORT als delete faalt, anders krijgen we dubbele data.
-      const deleteOk = await deleteChannelWeeks('Shopify - D2C', uniqueWeeks);
+      const deleteOk = await deleteChannelWeeks(shop.channel, uniqueWeeks);
       if (!deleteOk) {
         setStatus('error');
         setMessage('Verwijderen van bestaande rijen mislukt. Sync afgebroken om dubbele data te voorkomen. Check je internet/Supabase status en probeer opnieuw.');
@@ -217,7 +232,7 @@ export default function Shopify() {
         await fetch('/api/shopify-mark-synced', {
           method: 'POST',
           headers: authHeaders({ 'content-type': 'application/json' }),
-          body: JSON.stringify({ syncedTo }),
+          body: JSON.stringify({ shop: shop.domain, syncedTo }),
         });
         refreshStatus();
       } catch {
@@ -261,6 +276,23 @@ export default function Shopify() {
         <h2 className="text-lg font-semibold">Shopify koppeling</h2>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {SHOPIFY_SHOPS.map((s) => (
+          <button
+            key={s.domain}
+            onClick={() => selectShop(s.domain)}
+            disabled={status === 'loading'}
+            className={`px-3 py-1.5 rounded-full text-sm border transition disabled:opacity-50 ${
+              s.domain === shop.domain
+                ? 'bg-accent text-white border-accent'
+                : 'bg-white text-dark/70 border-bg4 hover:border-accent'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       <ConnectionCard status={shopifyStatus} statusError={statusError} checking={checking} onRetest={refreshStatus} />
 
       <div className="bg-info/10 border border-info/20 rounded-xl p-4 flex gap-3">
@@ -270,7 +302,7 @@ export default function Shopify() {
             Sync haalt orders direct op uit Shopify via OAuth. Credentials (Client ID/Secret + access token) staan veilig in Netlify env vars en Supabase, niet in de browser.
           </p>
           <p>
-            <strong>Replace-mode:</strong> bestaande "Shopify - D2C" rijen voor de gesynchroniseerde weken worden eerst verwijderd, daarna opnieuw ingeladen. Orders krijgen de ISO-week van hun <code className="text-xs bg-bg px-1 rounded">created_at</code>.
+            <strong>Replace-mode:</strong> bestaande "{shop.channel}" rijen voor de gesynchroniseerde weken worden eerst verwijderd, daarna opnieuw ingeladen. Elke winkel heeft een eigen kanaal, dus een sync van de ene winkel raakt de orders van de andere niet. Orders krijgen de ISO-week van hun <code className="text-xs bg-bg px-1 rounded">created_at</code>.
           </p>
           <p>
             <strong>Beperking zonder <code className="text-xs bg-bg px-1 rounded">read_all_orders</code> scope:</strong> Shopify levert alleen orders van de laatste 60 dagen. Vraag die scope aan in Partners voor volledige historie.
@@ -377,6 +409,7 @@ export default function Shopify() {
           <li>App URL: <code className="text-xs bg-bg px-1 rounded">https://advaldi-sell-out.netlify.app</code>. Redirect URL: <code className="text-xs bg-bg px-1 rounded">https://advaldi-sell-out.netlify.app/api/shopify-oauth-callback</code>. Embedded: off.</li>
           <li>Distribution → Custom distribution → target shop URL = jouw <code>.myshopify.com</code>.</li>
           <li>Netlify env vars: <code className="text-xs bg-bg px-1 rounded">SHOPIFY_CLIENT_ID</code>, <code className="text-xs bg-bg px-1 rounded">SHOPIFY_CLIENT_SECRET</code>, <code className="text-xs bg-bg px-1 rounded">SUPABASE_SERVICE_ROLE_KEY</code>. Trigger redeploy.</li>
+          <li>Tweede winkel (bijv. NAVEE): eigen app met custom distribution naar die winkel, en het paar als <code className="text-xs bg-bg px-1 rounded">SHOPIFY_CLIENT_ID_NAVEE</code> + <code className="text-xs bg-bg px-1 rounded">SHOPIFY_CLIENT_SECRET_NAVEE</code> in Netlify. De callback herkent zelf welke app de installatie ondertekende.</li>
           <li>Klik de install-link van Partners → goedkeuren → token wordt automatisch opgeslagen in Supabase tabel <code>shopify_tokens</code>.</li>
         </ol>
       </details>

@@ -1,9 +1,6 @@
 import type { Context } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
 import { isAuthorized, unauthorized } from '../shared/auth.mts';
-
-/** Shopify Admin API versie, gelijk gehouden met shopify-orders. */
-const API_VERSION = '2026-04';
+import { serviceClient, SHOPIFY_API_VERSION as API_VERSION } from '../shared/shopify.mts';
 
 type ProbeResult = { tokenValid: boolean | null; tokenError?: string };
 
@@ -69,29 +66,27 @@ async function probeToken(shop: string, token: string): Promise<ProbeResult> {
 
 /**
  * GET /api/shopify-status
- * Returnt info over de huidige Shopify-koppeling: shop URL, scopes, moment van
- * laatste sync en of het token bij Shopify nog echt geldig is.
- * Wordt gebruikt door de Shopify-pagina om de "Auto Sync (sinds laatste sync)"
- * knop en de verbindingsstatus te tonen.
+ * Returnt per gekoppelde winkel: shop URL, scopes, moment van laatste sync en
+ * of het token bij Shopify nog echt geldig is (`{ shops: [...] }`).
+ * Wordt gebruikt door de Shopify-pagina om per winkel de "Auto Sync (sinds
+ * laatste sync)" knop en de verbindingsstatus te tonen. Een winkel die niet in
+ * de lijst staat is nooit gekoppeld (of de koppeling is verwijderd).
  */
 export default async (req: Request, _ctx: Context) => {
   if (!isAuthorized(req)) return unauthorized();
 
-  const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseServiceKey) {
+  const supabase = serviceClient();
+  if (!supabase) {
     return new Response(
       JSON.stringify({ error: 'Server is niet correct geconfigureerd (SUPABASE_SERVICE_ROLE_KEY ontbreekt).' }),
       { status: 500, headers: { 'content-type': 'application/json' } }
     );
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
   const { data, error } = await supabase
     .from('shopify_tokens')
     .select('shop, scope, installed_at, last_synced_to, access_token')
-    .limit(1);
+    .order('shop');
 
   if (error) {
     return new Response(
@@ -100,34 +95,26 @@ export default async (req: Request, _ctx: Context) => {
     );
   }
 
-  if (!data || data.length === 0) {
-    return new Response(
-      JSON.stringify({
-        connected: false,
-        tokenValid: false,
-        tokenError:
-          'Er staat geen Shopify-koppeling in de database. De app is nog nooit geïnstalleerd, of de koppeling is verwijderd. Installeer de app via de Partners install-link.',
-      }),
-      { status: 200, headers: { 'content-type': 'application/json' } }
-    );
-  }
-
-  const row = data[0];
   // Het token zelf gaat NOOIT mee de browser in; alleen het oordeel erover.
-  const probe = await probeToken(row.shop, row.access_token);
-
-  return new Response(
-    JSON.stringify({
-      connected: true,
-      shop: row.shop,
-      scope: row.scope,
-      installedAt: row.installed_at,
-      lastSyncedTo: row.last_synced_to,
-      tokenValid: probe.tokenValid,
-      tokenError: probe.tokenError,
-    }),
-    { status: 200, headers: { 'content-type': 'application/json' } }
+  const shops = await Promise.all(
+    (data ?? []).map(async (row) => {
+      const probe = await probeToken(row.shop, row.access_token);
+      return {
+        connected: true,
+        shop: row.shop,
+        scope: row.scope,
+        installedAt: row.installed_at,
+        lastSyncedTo: row.last_synced_to,
+        tokenValid: probe.tokenValid,
+        tokenError: probe.tokenError,
+      };
+    })
   );
+
+  return new Response(JSON.stringify({ shops }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
 };
 
 export const config = {

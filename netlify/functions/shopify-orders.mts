@@ -1,6 +1,6 @@
 import type { Context } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
 import { isAuthorized, unauthorized } from '../shared/auth.mts';
+import { serviceClient, isShopDomain, SHOPIFY_API_VERSION } from '../shared/shopify.mts';
 
 interface LineItem {
   order_id: string;
@@ -36,10 +36,8 @@ interface ShopifyLineItem {
 export default async (req: Request, _ctx: Context) => {
   if (!isAuthorized(req)) return unauthorized();
 
-  const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseServiceKey) {
+  const supabase = serviceClient();
+  if (!supabase) {
     return new Response(
       JSON.stringify({ error: 'Server is niet correct geconfigureerd (SUPABASE_SERVICE_ROLE_KEY ontbreekt).' }),
       { status: 500, headers: { 'content-type': 'application/json' } }
@@ -51,9 +49,17 @@ export default async (req: Request, _ctx: Context) => {
   const to = url.searchParams.get('to');
   const shopParam = url.searchParams.get('shop');
 
-  // Haal opgeslagen token op
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
-  let query = supabase.from('shopify_tokens').select('shop, access_token').limit(1);
+  if (shopParam && !isShopDomain(shopParam)) {
+    return new Response(
+      JSON.stringify({ error: 'Ongeldige shop-parameter.' }),
+      { status: 400, headers: { 'content-type': 'application/json' } }
+    );
+  }
+
+  // Haal opgeslagen token op. Met meerdere gekoppelde winkels (Pure, NAVEE) is
+  // `shop` verplicht: zonder sortering gaf `.limit(1)` een willekeurige winkel
+  // terug, en die orders zouden onder het verkeerde kanaal belanden.
+  let query = supabase.from('shopify_tokens').select('shop, access_token').order('shop');
   if (shopParam) query = query.eq('shop', shopParam);
   const { data: tokenRows, error: tokenErr } = await query;
 
@@ -66,8 +72,19 @@ export default async (req: Request, _ctx: Context) => {
 
   if (!tokenRows || tokenRows.length === 0) {
     return new Response(
-      JSON.stringify({ error: 'Geen Shopify-koppeling gevonden. Installeer eerst de Sell-out-report app via de install link.' }),
+      JSON.stringify({
+        error: shopParam
+          ? `Geen Shopify-koppeling gevonden voor ${shopParam}. Installeer eerst de app in die winkel.`
+          : 'Geen Shopify-koppeling gevonden. Installeer eerst de Sell-out-report app via de install link.',
+      }),
       { status: 404, headers: { 'content-type': 'application/json' } }
+    );
+  }
+
+  if (tokenRows.length > 1) {
+    return new Response(
+      JSON.stringify({ error: 'Er zijn meerdere winkels gekoppeld; geef aan welke met de parameter "shop".' }),
+      { status: 400, headers: { 'content-type': 'application/json' } }
     );
   }
 
@@ -85,7 +102,7 @@ export default async (req: Request, _ctx: Context) => {
   if (to) filterParts.push(`created_at:<=${to}`);
   const queryFilter = filterParts.join(' ');
 
-  const apiUrl = `https://${shop}/admin/api/2026-04/graphql.json`;
+  const apiUrl = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
   const items: LineItem[] = [];
   let cursor: string | null = null;
 
@@ -235,7 +252,7 @@ export default async (req: Request, _ctx: Context) => {
     cursor = orders.pageInfo.endCursor;
   }
 
-  return new Response(JSON.stringify({ items, count: items.length, pages: pageCount }), {
+  return new Response(JSON.stringify({ shop, items, count: items.length, pages: pageCount }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });

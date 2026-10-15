@@ -1,11 +1,14 @@
 import type { Context } from '@netlify/functions';
-import { createClient } from '@supabase/supabase-js';
 import { isAuthorized, unauthorized } from '../shared/auth.mts';
+import { serviceClient, isShopDomain } from '../shared/shopify.mts';
 
 /**
  * POST /api/shopify-mark-synced
- * Body: { syncedTo: "2026-06-25T..." } (ISO timestamp)
- * Werkt last_synced_to bij in shopify_tokens zodat de volgende Auto Sync vanaf daar verder gaat.
+ * Body: { shop: "x.myshopify.com", syncedTo: "2026-06-25T..." } (ISO timestamp)
+ * Werkt last_synced_to bij voor die ene winkel in shopify_tokens zodat de
+ * volgende Auto Sync van die winkel vanaf daar verder gaat. Per winkel, want
+ * een NAVEE-sync mag de Pure-datum niet vooruitzetten (dan slaat de volgende
+ * Pure Auto Sync orders over).
  */
 export default async (req: Request, _ctx: Context) => {
   if (req.method !== 'POST') {
@@ -14,17 +17,15 @@ export default async (req: Request, _ctx: Context) => {
 
   if (!isAuthorized(req)) return unauthorized();
 
-  const supabaseUrl = process.env.SUPABASE_URL || 'https://comqpyhbdsqifheoegjk.supabase.co';
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseServiceKey) {
+  const supabase = serviceClient();
+  if (!supabase) {
     return new Response(
       JSON.stringify({ error: 'Server is niet correct geconfigureerd.' }),
       { status: 500, headers: { 'content-type': 'application/json' } }
     );
   }
 
-  let body: { syncedTo?: string };
+  let body: { shop?: string; syncedTo?: string };
   try {
     body = await req.json();
   } catch {
@@ -41,6 +42,13 @@ export default async (req: Request, _ctx: Context) => {
     );
   }
 
+  if (!body.shop || !isShopDomain(body.shop)) {
+    return new Response(
+      JSON.stringify({ error: 'shop is verplicht (x.myshopify.com)' }),
+      { status: 400, headers: { 'content-type': 'application/json' } }
+    );
+  }
+
   // Valideer dat het een echte datum is
   const ts = new Date(body.syncedTo);
   if (isNaN(ts.getTime())) {
@@ -50,12 +58,10 @@ export default async (req: Request, _ctx: Context) => {
     );
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
-  // Update last_synced_to van alle rijen in shopify_tokens (in praktijk 1 rij per shop, doorgaans 1 totaal)
   const { error } = await supabase
     .from('shopify_tokens')
     .update({ last_synced_to: ts.toISOString() })
-    .not('shop', 'is', null);
+    .eq('shop', body.shop);
 
   if (error) {
     return new Response(
