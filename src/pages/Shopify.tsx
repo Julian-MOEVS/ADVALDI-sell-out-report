@@ -34,6 +34,14 @@ function toYMD(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Maandag 00:00 UTC van de ISO-week waarin een YYYY-MM-DD-datum valt. */
+function isoMondayUTC(ymd: string): Date {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() - (day - 1));
+  return d;
+}
+
 function formatDateNL(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
@@ -118,8 +126,31 @@ export default function Shopify() {
     setStats(null);
 
     try {
-      const params = new URLSearchParams({ shop: shop.domain, from: fromDate });
-      if (toDate) params.set('to', toDate);
+      // Replace-mode wist per kanaal HELE weken. Begint of eindigt de periode
+      // midden in een week, dan zou die week half terugkomen (zo bleef van Pure
+      // week 202639 maar 3 van de 33 stuks over). Daarom altijd hele ISO-weken:
+      // vanaf maandag 00:00 UTC tot de maandag na de laatste week. Shopify filtert
+      // op de tijdzone van de winkel, dus we vragen een dag ruimer op en knippen
+      // daarna exact af op UTC, dezelfde basis als dateToISOWeek.
+      let weekStart = isoMondayUTC(fromDate);
+      // Zonder read_all_orders levert Shopify alleen de laatste 60 dagen. Een
+      // week die (deels) daarvóór valt komt dan onvolledig terug en zou in
+      // replace-mode de bestaande, volledige data overschrijven. Begin daarom bij
+      // de eerste hele week binnen het venster.
+      let clampNote = '';
+      if (!(shopifyStatus?.scope || '').includes('read_all_orders')) {
+        const firstFull = isoMondayUTC(toYMD(new Date(Date.now() - 60 * 86400000)));
+        firstFull.setUTCDate(firstFull.getUTCDate() + 7);
+        if (weekStart < firstFull) {
+          weekStart = firstFull;
+          clampNote = ` Shopify levert zonder read_all_orders alleen de laatste 60 dagen; gesynchroniseerd vanaf ${toYMD(firstFull)}, oudere weken zijn ongemoeid gelaten.`;
+        }
+      }
+      const weekEnd = isoMondayUTC(toDate || toYMD(new Date()));
+      weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+      const fetchFrom = new Date(weekStart);
+      fetchFrom.setUTCDate(fetchFrom.getUTCDate() - 1);
+      const params = new URLSearchParams({ shop: shop.domain, from: toYMD(fetchFrom), to: toYMD(weekEnd) });
 
       const res = await fetch(`/api/shopify-orders?${params.toString()}`, { headers: authHeaders() });
       let payload: { error?: string; items?: ShopifyLineItem[] };
@@ -137,10 +168,13 @@ export default function Shopify() {
         return;
       }
 
-      const items: ShopifyLineItem[] = payload.items || [];
+      const items: ShopifyLineItem[] = (payload.items || []).filter((i) => {
+        const t = new Date(i.created_at).getTime();
+        return t >= weekStart.getTime() && t < weekEnd.getTime();
+      });
       if (items.length === 0) {
         setStatus('success');
-        setMessage('Geen orders gevonden in deze periode.');
+        setMessage(`Geen orders gevonden in deze periode.${clampNote}`);
         return;
       }
 
@@ -247,7 +281,7 @@ export default function Shopify() {
         weeks: uniqueWeeks.length,
       });
       setStatus('success');
-      setMessage(`Sync voltooid!${skippedMsg}`);
+      setMessage(`Sync voltooid!${skippedMsg}${clampNote}`);
     } catch (err) {
       setStatus('error');
       setMessage(err instanceof Error ? err.message : 'Onbekende fout');
