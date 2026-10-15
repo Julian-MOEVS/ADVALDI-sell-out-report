@@ -118,11 +118,19 @@ async function clientCredentialsToken(shop: string, app: ShopifyApp): Promise<To
   } catch (e) {
     return { token: null, error: `Shopify niet bereikbaar: ${e instanceof Error ? e.message : 'netwerkfout'}` };
   }
-  const body = (await res.json().catch(() => null)) as
-    | { access_token?: string; scope?: string; error?: string; error_description?: string; errors?: unknown }
-    | null;
+  // Shopify geeft fouten hier soms als platte tekst of HTML terug
+  // ("Oauth error shop_not_permitted: ..."), niet als JSON; bewaar dan de tekst.
+  const text = await res.text().catch(() => '');
+  let body: { access_token?: string; scope?: string; error?: string; error_description?: string; errors?: unknown } | null = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = null;
+  }
   if (res.ok && body?.access_token) return { token: body.access_token, scope: body.scope };
-  const reason = body?.error_description || body?.error || (body?.errors ? JSON.stringify(body.errors) : '');
+  const plain = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const reason =
+    body?.error_description || body?.error || (body?.errors ? JSON.stringify(body.errors) : '') || plain;
   return { token: null, error: `HTTP ${res.status}${reason ? `: ${reason}` : ''}` };
 }
 

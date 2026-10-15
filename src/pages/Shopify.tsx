@@ -481,9 +481,10 @@ function ConnectionCard({
       {detail && <p className="text-xs text-dark/70">{detail}</p>}
       {tone === 'bad' && !statusError && (
         <p className="text-xs text-dark/70">
-          Herstellen kan alleen vanuit de winkel zelf: de winkeleigenaar opent de custom-distribution
-          install-link uit Shopify Partners en keurt de app goed. Het nieuwe token wordt daarna
-          automatisch opgeslagen. Zie de setup-instructies onderaan deze pagina.
+          Herstellen: installeer de app in de winkel via de install-link uit Shopify Partners; het
+          token wordt daarna automatisch opgeslagen. Voor een app uit de Dev Dashboard die in dezelfde
+          organisatie zit als de winkel haalt het dashboard zelf een token op (client credentials);
+          "shop_not_permitted" betekent dat app en winkel in verschillende organisaties zitten.
         </p>
       )}
       <button
