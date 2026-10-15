@@ -66,7 +66,8 @@ export default function Shopify() {
   const refreshStatus = useCallback(async () => {
     setChecking(true);
     try {
-      const res = await fetch('/api/shopify-status', { headers: authHeaders() });
+      const shops = SHOPIFY_SHOPS.map((s) => s.domain).join(',');
+      const res = await fetch(`/api/shopify-status?shops=${encodeURIComponent(shops)}`, { headers: authHeaders() });
       if (res.ok) {
         const data = (await res.json()) as { shops?: ShopifyStatus[] };
         setAllStatuses(data.shops ?? []);

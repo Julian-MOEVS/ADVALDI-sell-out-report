@@ -1,6 +1,6 @@
 import type { Context } from '@netlify/functions';
 import { isAuthorized, unauthorized } from '../shared/auth.mts';
-import { serviceClient, isShopDomain, SHOPIFY_API_VERSION } from '../shared/shopify.mts';
+import { serviceClient, isShopDomain, getShopToken, SHOPIFY_API_VERSION } from '../shared/shopify.mts';
 
 interface LineItem {
   order_id: string;
@@ -56,40 +56,40 @@ export default async (req: Request, _ctx: Context) => {
     );
   }
 
-  // Haal opgeslagen token op. Met meerdere gekoppelde winkels (Pure, NAVEE) is
-  // `shop` verplicht: zonder sortering gaf `.limit(1)` een willekeurige winkel
-  // terug, en die orders zouden onder het verkeerde kanaal belanden.
-  let query = supabase.from('shopify_tokens').select('shop, access_token').order('shop');
-  if (shopParam) query = query.eq('shop', shopParam);
-  const { data: tokenRows, error: tokenErr } = await query;
-
-  if (tokenErr) {
-    return new Response(
-      JSON.stringify({ error: 'Kon Shopify token niet ophalen', detail: tokenErr.message }),
-      { status: 500, headers: { 'content-type': 'application/json' } }
-    );
+  // Welke winkel: expliciet via `shop`, of de enige gekoppelde winkel. Met
+  // meerdere winkels (Pure, NAVEE) is `shop` verplicht: zonder sortering gaf
+  // `.limit(1)` een willekeurige winkel terug, en die orders zouden onder het
+  // verkeerde kanaal belanden.
+  let shop = shopParam;
+  if (!shop) {
+    const { data: rows, error: rowsErr } = await supabase.from('shopify_tokens').select('shop').order('shop');
+    if (rowsErr) {
+      return new Response(
+        JSON.stringify({ error: 'Kon Shopify token niet ophalen', detail: rowsErr.message }),
+        { status: 500, headers: { 'content-type': 'application/json' } }
+      );
+    }
+    if (!rows || rows.length !== 1) {
+      return new Response(
+        JSON.stringify({ error: 'Geef met de parameter "shop" aan welke winkel gesynchroniseerd moet worden.' }),
+        { status: 400, headers: { 'content-type': 'application/json' } }
+      );
+    }
+    shop = rows[0].shop as string;
   }
 
-  if (!tokenRows || tokenRows.length === 0) {
+  // Opgeslagen token (OAuth) of, als dat ontbreekt, een client-credentials-token.
+  const initial = await getShopToken(supabase, shop);
+  if (!initial.token) {
     return new Response(
       JSON.stringify({
-        error: shopParam
-          ? `Geen Shopify-koppeling gevonden voor ${shopParam}. Installeer eerst de app in die winkel.`
-          : 'Geen Shopify-koppeling gevonden. Installeer eerst de Sell-out-report app via de install link.',
+        error: `Geen Shopify-koppeling voor ${shop}. Installeer de app in die winkel.${initial.error ? ` ${initial.error}` : ''}`,
       }),
       { status: 404, headers: { 'content-type': 'application/json' } }
     );
   }
-
-  if (tokenRows.length > 1) {
-    return new Response(
-      JSON.stringify({ error: 'Er zijn meerdere winkels gekoppeld; geef aan welke met de parameter "shop".' }),
-      { status: 400, headers: { 'content-type': 'application/json' } }
-    );
-  }
-
-  const shop = tokenRows[0].shop;
-  const token = tokenRows[0].access_token;
+  let token: string = initial.token;
+  let refreshed = false;
 
   if (!from) {
     return new Response(
@@ -196,6 +196,18 @@ export default async (req: Request, _ctx: Context) => {
       },
       body: JSON.stringify({ query: graphqlQuery, variables: { cursor, query: queryFilter } }),
     });
+
+    // Client-credentials-tokens verlopen na 24 uur: bij een 401 eenmalig een
+    // nieuw token halen en dezelfde pagina opnieuw opvragen.
+    if (res.status === 401 && !refreshed) {
+      refreshed = true;
+      const fresh = await getShopToken(supabase, shop, { refresh: true });
+      if (fresh.token) {
+        token = fresh.token;
+        pageCount--;
+        continue;
+      }
+    }
 
     if (!res.ok) {
       const text = await res.text();

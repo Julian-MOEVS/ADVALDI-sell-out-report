@@ -94,3 +94,71 @@ export async function verifyShopifyRequest(url: URL, apps: ShopifyApp[]): Promis
   }
   return null;
 }
+
+type TokenResult = { token: string | null; error?: string };
+
+/**
+ * Client credentials grant: een app uit de Dev Dashboard ruilt zijn eigen
+ * client-ID en geheim in voor een token, zonder OAuth-scherm. Werkt alleen als
+ * app en winkel in dezelfde Dev Dashboard-organisatie zitten (anders
+ * `shop_not_permitted`). Het token verloopt na 24 uur; zie getShopToken.
+ */
+async function clientCredentialsToken(shop: string, app: ShopifyApp): Promise<TokenResult & { scope?: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: app.clientId,
+        client_secret: app.clientSecret,
+      }),
+    });
+  } catch (e) {
+    return { token: null, error: `Shopify niet bereikbaar: ${e instanceof Error ? e.message : 'netwerkfout'}` };
+  }
+  const body = (await res.json().catch(() => null)) as
+    | { access_token?: string; scope?: string; error?: string; error_description?: string; errors?: unknown }
+    | null;
+  if (res.ok && body?.access_token) return { token: body.access_token, scope: body.scope };
+  const reason = body?.error_description || body?.error || (body?.errors ? JSON.stringify(body.errors) : '');
+  return { token: null, error: `HTTP ${res.status}${reason ? `: ${reason}` : ''}` };
+}
+
+/**
+ * Token voor een winkel. Eerst het opgeslagen token uit shopify_tokens (OAuth-
+ * installatie, zoals bij Pure). Ontbreekt dat, of is `refresh` gezet omdat
+ * Shopify het token weigerde, dan proberen we per app de client credentials
+ * grant; een gelukt token wordt opgeslagen (installed_at en last_synced_to
+ * blijven staan). `error` bevat dan Shopify's eigen reden, zodat het dashboard
+ * kan laten zien waarom koppelen niet lukt.
+ */
+export async function getShopToken(
+  supabase: SupabaseClient,
+  shop: string,
+  { refresh = false }: { refresh?: boolean } = {}
+): Promise<TokenResult> {
+  const { data: row } = await supabase
+    .from('shopify_tokens')
+    .select('access_token')
+    .eq('shop', shop)
+    .maybeSingle();
+  if (row?.access_token && !refresh) return { token: row.access_token };
+
+  const errors: string[] = [];
+  for (const app of shopifyApps()) {
+    const res = await clientCredentialsToken(shop, app);
+    if (res.token) {
+      await supabase
+        .from('shopify_tokens')
+        .upsert({ shop, access_token: res.token, scope: res.scope ?? null }, { onConflict: 'shop' });
+      return { token: res.token };
+    }
+    if (res.error) errors.push(res.error);
+  }
+  return {
+    token: refresh ? null : row?.access_token ?? null,
+    error: errors.length ? `Client credentials mislukt (${errors.join('; ')}).` : undefined,
+  };
+}

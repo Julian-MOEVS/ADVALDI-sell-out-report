@@ -1,8 +1,8 @@
 import type { Context } from '@netlify/functions';
 import { isAuthorized, unauthorized } from '../shared/auth.mts';
-import { serviceClient, SHOPIFY_API_VERSION as API_VERSION } from '../shared/shopify.mts';
+import { serviceClient, isShopDomain, getShopToken, SHOPIFY_API_VERSION as API_VERSION } from '../shared/shopify.mts';
 
-type ProbeResult = { tokenValid: boolean | null; tokenError?: string };
+type ProbeResult = { tokenValid: boolean | null; tokenError?: string; status?: number };
 
 /**
  * Controleert of het opgeslagen access token bij Shopify nog geldig is.
@@ -34,6 +34,7 @@ async function probeToken(shop: string, token: string): Promise<ProbeResult> {
   if (res.status === 401 || res.status === 403) {
     return {
       tokenValid: false,
+      status: res.status,
       tokenError:
         'Shopify weigert het opgeslagen token. Dit gebeurt vrijwel altijd doordat de app uit de winkel is verwijderd, waardoor Shopify het token intrekt. De app moet opnieuw geïnstalleerd worden via de Partners install-link.',
     };
@@ -65,12 +66,12 @@ async function probeToken(shop: string, token: string): Promise<ProbeResult> {
 }
 
 /**
- * GET /api/shopify-status
- * Returnt per gekoppelde winkel: shop URL, scopes, moment van laatste sync en
- * of het token bij Shopify nog echt geldig is (`{ shops: [...] }`).
- * Wordt gebruikt door de Shopify-pagina om per winkel de "Auto Sync (sinds
- * laatste sync)" knop en de verbindingsstatus te tonen. Een winkel die niet in
- * de lijst staat is nooit gekoppeld (of de koppeling is verwijderd).
+ * GET /api/shopify-status?shops=a.myshopify.com,b.myshopify.com
+ * Returnt per winkel: shop URL, scopes, moment van laatste sync en of het token
+ * bij Shopify nog echt geldig is (`{ shops: [...] }`). Gekoppelde winkels uit
+ * shopify_tokens staan er altijd in; winkels uit `shops` zonder opgeslagen
+ * token proberen we via de client credentials grant (zie getShopToken), zodat
+ * de pagina ook laat zien waaróm een winkel niet te koppelen is.
  */
 export default async (req: Request, _ctx: Context) => {
   if (!isAuthorized(req)) return unauthorized();
@@ -83,9 +84,14 @@ export default async (req: Request, _ctx: Context) => {
     );
   }
 
+  const requested = (new URL(req.url).searchParams.get('shops') || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => isShopDomain(s));
+
   const { data, error } = await supabase
     .from('shopify_tokens')
-    .select('shop, scope, installed_at, last_synced_to, access_token')
+    .select('shop, scope, installed_at, last_synced_to')
     .order('shop');
 
   if (error) {
@@ -95,16 +101,39 @@ export default async (req: Request, _ctx: Context) => {
     );
   }
 
+  const rows = new Map((data ?? []).map((r) => [r.shop as string, r]));
+  const allShops = [...new Set([...rows.keys(), ...requested])].sort();
+
   // Het token zelf gaat NOOIT mee de browser in; alleen het oordeel erover.
   const shops = await Promise.all(
-    (data ?? []).map(async (row) => {
-      const probe = await probeToken(row.shop, row.access_token);
+    allShops.map(async (shop) => {
+      let tok = await getShopToken(supabase, shop);
+      if (!tok.token) {
+        return {
+          connected: false,
+          shop,
+          tokenValid: false,
+          tokenError: `Er is geen token voor ${shop}: de app is in deze winkel nog niet (goed) geïnstalleerd.${tok.error ? ` ${tok.error}` : ''}`,
+        };
+      }
+      let probe = await probeToken(shop, tok.token);
+      // Verlopen client-credentials-token (24 uur): eenmalig vernieuwen.
+      if (probe.status === 401) {
+        tok = await getShopToken(supabase, shop, { refresh: true });
+        if (tok.token) probe = await probeToken(shop, tok.token);
+        else if (tok.error) probe = { ...probe, tokenError: `${probe.tokenError} ${tok.error}` };
+      }
+      const { data: row } = await supabase
+        .from('shopify_tokens')
+        .select('scope, installed_at, last_synced_to')
+        .eq('shop', shop)
+        .maybeSingle();
       return {
         connected: true,
-        shop: row.shop,
-        scope: row.scope,
-        installedAt: row.installed_at,
-        lastSyncedTo: row.last_synced_to,
+        shop,
+        scope: row?.scope,
+        installedAt: row?.installed_at,
+        lastSyncedTo: row?.last_synced_to,
         tokenValid: probe.tokenValid,
         tokenError: probe.tokenError,
       };
