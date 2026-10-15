@@ -14,6 +14,12 @@ export interface ShopifyShop {
   channel: string;
   /** Merk voor orderregels zonder (herkenbare) vendor. */
   defaultBrand: string;
+  /**
+   * Webshoporders van deze winkel worden (soms) ook in Brincr ingevoerd, als
+   * particuliere klant. Die Brincr-regels worden dan weggestreept tegen de
+   * Shopify-orders (zie dedupeBrincrWebshop in filters.ts).
+   */
+  ordersAlsoInBrincr?: boolean;
 }
 
 export const SHOPIFY_SHOPS: ShopifyShop[] = [
@@ -28,6 +34,9 @@ export const SHOPIFY_SHOPS: ShopifyShop[] = [
     label: 'NAVEE Benelux (naveetech.nl)',
     channel: 'Shopify - NAVEE',
     defaultBrand: 'NAVEE',
+    // Sinds sep 2026 worden NAVEE-webshoporders tijdelijk ook in Brincr
+    // geïmporteerd (per week en model 1-op-1 nagerekend op 15 okt 2026).
+    ordersAlsoInBrincr: true,
   },
 ];
 

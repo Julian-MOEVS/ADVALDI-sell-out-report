@@ -4,7 +4,7 @@ import type { AppState, AppActions, DataRow, PlatformConfig } from '../types';
 import { EMBEDDED_DATA } from '../lib/data';
 import { catalogDisplayName, setDynamicCatalog, setProductLinks, setCatalogAliases } from '../lib/catalog';
 import { fetchAllRows, insertRows, deleteCombo, deleteChannel, fetchCatalog, fetchProductLinks, createImport, deleteImport, fetchCatalogAliases } from '../lib/supabase';
-import { isShopifyRefurbished, isSparePart, isChargeFee } from '../lib/filters';
+import { isShopifyRefurbished, isSparePart, isChargeFee, dedupeBrincrWebshop } from '../lib/filters';
 
 export const useAppStore = create<AppState & AppActions>()(
   persist(
@@ -123,10 +123,14 @@ export const useAppStore = create<AppState & AppActions>()(
       // o.a. in de FNAC/VDB-weekbestanden) tellen niet mee: we rapporteren alleen
       // verkopen. De rij blijft wel staan zodat de voorraad (k) in de snapshot
       // meetelt.
+      // NAVEE-webshoporders die ook als particulier in Brincr staan tellen één
+      // keer, via Shopify (zie dedupeBrincrWebshop).
       allData: () =>
-        [...EMBEDDED_DATA, ...get().userData]
-          .filter((r) => !isShopifyRefurbished(r) && !isSparePart(r) && !isChargeFee(r))
-          .map((r) => (r.s < 0 ? { ...r, s: 0 } : r)),
+        dedupeBrincrWebshop(
+          [...EMBEDDED_DATA, ...get().userData]
+            .filter((r) => !isShopifyRefurbished(r) && !isSparePart(r) && !isChargeFee(r))
+            .map((r) => (r.s < 0 ? { ...r, s: 0 } : r))
+        ),
 
       displayName: (orig: string) => get().aliases[orig] || catalogDisplayName(orig) || orig,
     }),

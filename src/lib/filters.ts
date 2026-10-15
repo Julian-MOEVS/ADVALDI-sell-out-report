@@ -1,5 +1,6 @@
 import type { DataRow } from '../types';
 import { matchToCatalog, catalogDisplayName } from './catalog';
+import { SHOPIFY_SHOPS } from './shopifyShops';
 
 /** Normaliseer kanaal-string voor vergelijking: trim, lowercase, varianten van 'Shopify' samen. */
 function normalizeChannel(ch: string): string {
@@ -293,4 +294,65 @@ export function isSparePart(r: DataRow): boolean {
  */
 export function isChargeFee(r: DataRow): boolean {
   return (r.mfr || '').replace(/\s+/g, '').toLowerCase() === 'chargefee';
+}
+
+/** ISO-week ("YYYYWW") die direct aan de gegeven week voorafgaat. */
+function previousIsoWeek(week: string): string | null {
+  const t = isoWeekThursday(week);
+  if (!t) return null;
+  const d = new Date(t);
+  d.setUTCDate(d.getUTCDate() - 7);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const wk = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}${String(wk).padStart(2, '0')}`;
+}
+
+/** Dealers en winkels staan in Brincr met hun klantnummer, bijv. "PTS Veghel (2737)"; particulieren niet. */
+function isBrincrConsumer(r: DataRow): boolean {
+  return (r.ch || '').trim().toLowerCase() === 'brincr' && !/\(\d+\)\s*$/.test((r.st || '').trim());
+}
+
+/**
+ * Webshoporders van winkels met `ordersAlsoInBrincr` (NAVEE) komen twee keer
+ * binnen: via de Shopify-sync én als particuliere klant in de Brincr-export.
+ * Shopify is voor die orders de bron (vollediger: ook accessoires en orders die
+ * Brincr mist), dus de Brincr-kopie vervalt. Per product (catalogus-SKU) en
+ * week strepen we particuliere Brincr-stuks weg tegen de webshopstuks van
+ * dezelfde week, en daarna van de week ervoor (Brincr-invoer kan een dag later
+ * zijn). Nooit meer dan Shopify verkocht heeft: dealers, MOEVS-winkels en
+ * particuliere verkopen buiten de webshop blijven staan. Stopt het importeren
+ * in Brincr, dan valt er simpelweg niets meer weg te strepen.
+ */
+export function dedupeBrincrWebshop(rows: DataRow[]): DataRow[] {
+  const channels = new Set(SHOPIFY_SHOPS.filter((s) => s.ordersAlsoInBrincr).map((s) => s.channel));
+  if (channels.size === 0) return rows;
+
+  const productKey = (r: DataRow) => matchToCatalog(r.an, r.ean, r.sku) || (r.sku || r.an).trim().toUpperCase();
+  const supply = new Map<string, number>();
+  for (const r of rows) {
+    if (!channels.has(r.ch) || r.s <= 0) continue;
+    const k = `${r.w}|${productKey(r)}`;
+    supply.set(k, (supply.get(k) || 0) + r.s);
+  }
+  if (supply.size === 0) return rows;
+
+  const removed = new Map<DataRow, number>();
+  const candidates = rows.filter((r) => r.s > 0 && isBrincrConsumer(r)).sort((a, b) => a.w.localeCompare(b.w));
+  for (const r of candidates) {
+    const key = productKey(r);
+    let left = r.s;
+    for (const w of [r.w, previousIsoWeek(r.w)]) {
+      if (!w || left <= 0) continue;
+      const k = `${w}|${key}`;
+      const avail = supply.get(k) || 0;
+      const take = Math.min(avail, left);
+      if (take > 0) {
+        supply.set(k, avail - take);
+        left -= take;
+      }
+    }
+    if (left < r.s) removed.set(r, r.s - left);
+  }
+  if (removed.size === 0) return rows;
+  return rows.map((r) => (removed.has(r) ? { ...r, s: r.s - (removed.get(r) || 0) } : r));
 }
